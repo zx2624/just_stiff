@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <param name="robot_description"
+    textfile="$(find sensor_driver)/urdf/multivelodyne_3d.urdf" />
+    
+  <node name="robot_state_publisher" pkg="robot_state_publisher"
+    type="robot_state_publisher" />
+    
+  <arg name="rviz" default="false" />
+
+
+  <arg name="configfile" default="$(find sensor_driver)/config/configmultirslidar-toyota.xml" />
+  <arg name="logdir" default="--log_dir=/home/zx/catkin_ws/data" />
+  <arg name="glogparam" default="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=5   $(arg logdir)" />
+
+  <node pkg="sensor_driver" type="masternode" name="masternode" args="$(arg glogparam)" output="screen">
+  	<param name="config_file" value="$(arg configfile)"/>
+  </node>
+
+
+  <node pkg="sensor_driver" type="getmultirslidardata" name="getmultirslidardata" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=2   $(arg logdir)" output="screen">
+  <param name="fix_frame" value="true"/>
+  </node>
+
+  <node pkg="depth_image_utils" type="depth_image_utils" name="depth_image_utils" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=0   $(arg logdir)">
+       <param name="laser" value="32"/>
+       <param name="laser_param" value="$(find depth_image_utils)/config/toyota.txt" />
+  </node>
+
+  <node pkg="stiff_depth" type="stiff_depth" name="stiff_depth" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=2   $(arg logdir)" output="screen">
+  <param name="fix_frame" value="true"/>
+  <param name="visulization" value="false"/>
+  </node>
+
+
+
+</launch>
