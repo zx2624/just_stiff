@@ -211,7 +211,7 @@ common::BlockingQueue<sensor_driver_msgs::GpswithHeadingConstPtr> qgwithhmsgs_;
 common::BlockingQueue<depth_image_utils::HeightMapConstPtr> qheightmap_;
 sensor_msgs::PointCloud2ConstPtr lidarCloudMsgs_;
 ros::Publisher pubStiffwaterOgm;
-//#define VIEWER
+#define VIEWER
 #ifdef VIEWER
 boost::shared_ptr<PCLVisualizer> 	cloud_viewer_(new PCLVisualizer ("zx Cloud"));
 #endif
@@ -1331,7 +1331,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 	const int round32 = cloud->size() / 32;
 	float far_bound = FAR_BOUND;
 
-	for(int j = 0; j < 2; ++j){
+	for(int j = 0; j < 0; ++j){
 		for(int i = 0; i < round32; ++i){
 			int index_single = i * 32 + map_j[j];
 				auto pt = newcloud->points[index_single];
@@ -1341,7 +1341,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 					single->points.push_back(pt_ori);
 		}
 	}
-	for(int j = 0; j < 25; ++j){
+	for(int j = 0; j < 0; ++j){
 //				if( map_j[j] >  25) continue;
 		//		std::cout << " ----------------------- " << std::endl;
 		for(int i = 0; i + window_big < round32; i+=window_small_32){
@@ -1569,6 +1569,15 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 					}
 					int begin_x = (x0 + 35) / 0.2, begin_y = (y0 + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
 					int end_x = (x1 + 35) / 0.2, end_y = (y1 + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+					if(begin_y < end_y){
+						swap(begin_x, end_x);
+						swap(begin_y, end_y);
+					}
+					float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
+					if(ratio < 1){
+						end_x = begin_x + ratio * (end_x - begin_x);
+						end_y = begin_y + ratio * (end_y - begin_y);
+					}
 					if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
 							&& begin_y >=0 && begin_y < GRIDWH
 							&& end_y >=0 && end_y < GRIDWH){
@@ -1582,7 +1591,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 	}
 }
 #define NEW
-void useTwo16(cv::Mat grid, cv::Mat grid32, Eigen::Quaterniond q){
+void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_show, Eigen::Quaterniond q){
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
 	mtx_cloud.lock();
 	if(lidarCloudMsgs_ != nullptr)
@@ -1603,28 +1612,61 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, Eigen::Quaterniond q){
 		pcl::PointCloud<pcl::PointXYZI>::Ptr new16_left(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr new16_right(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr new32(new pcl::PointCloud<pcl::PointXYZI>);
+		pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_32(new pcl::PointCloud<pcl::PointXYZI>);
+		pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_32(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::transformPointCloud(*outputclouds[0], *new32, Eigen::Vector3d(0,0,0), q);
 		pcl::transformPointCloud(*outputclouds[1], *new16_left, Eigen::Vector3d(0,0,0), q);
 		pcl::transformPointCloud(*outputclouds[2], *new16_right, Eigen::Vector3d(0,0,0), q);
 		const int layer = 16;
 		const int round = outputclouds[1]->points.size() / layer;
-
+#ifdef ee
 		//点云投影到栅格
 		for(auto pt : tempcloud->points){
 			if(pt.range < 0) continue;
 			float x = pt.x;
 			float y = pt.y;
+			float z = pt.z;
+			Eigen::Vector3d pt_rec(x, y, z);
+			float z_rec = (q * pt_rec).z();
 			int col=boost::math::round((x+35)/0.2);//干！！！！！！！！！！！
 			int row=boost::math::round((y+20)/0.2);
 			if(col >= 0 && col < GRIDWH && row >= 0 && row < GRIDWH){
 				auto ptr = grid.ptr<unsigned char>(GRIDWH - 1 - row);
 				auto ptrall = grid32.ptr<unsigned char>(GRIDWH - 1 - row);
+				auto ptr_show = grid_h_show.ptr<unsigned char>(GRIDWH - 1 - row);
 				ptrall[col] = 1;
 				ptr[3*col + 1] = 255;
+				ptr_show[3*col + 1] = 255;
+			}
+			if(col >= 32 / 0.2 && col <= 38 / 0.2 && row >= 20 / 0.2 && row <= 35 / 0.2){
+				if(col >= 34 /0.2 && col <= 36 / 0.2)
+					continue;
+				auto ptr_height = grid_height.ptr<float>(row);
+
+				float z_val = z_rec;
+				if(z_val > ptr_height[col] && z_val < 1){
+					ptr_height[col] = z_val;
+				}
+			}
+		}
+		for(int row = 20 / 0.2 ; row <= 35 / 0.2; row++){
+			auto ptr = grid_height.ptr<float>(row);
+			auto ptr_show = grid_h_show.ptr<unsigned char>(GRIDWH - 1 - row);
+			float height_diff = -1;
+			int col_target = -1;
+			for(int col = 35 / 0.2; col <= 38 / 0.2 - 1; col++){
+				if(ptr[col] - ptr[col + 1] > height_diff){
+					height_diff = ptr[col] - ptr[col + 1];
+					col_target = col;
+				}
+			}
+			if(height_diff > 0.3){
+				ptr_show[3 * col_target + 1] = 0;
+				ptr_show[3 * col_target + 2] = 255;
 			}
 		}
 		float far_bound = FAR_BOUND ;
-		for(int j = 0; j < 16; ++j){
+		for(int j = 0; j < 0; ++j){
 			for(int i = 0; i + window_big < round; ){
 				float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
 				float dis_in_window = 0;
@@ -1996,17 +2038,18 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, Eigen::Quaterniond q){
 
 
 		//			test
-		pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_32(new pcl::PointCloud<pcl::PointXYZI>);
-		pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_32(new pcl::PointCloud<pcl::PointXYZI>);
+
 		int layer32 = 15;
-		useOne32(outputclouds[0], new32, high_cloud_32, low_cloud_32, layer32, grid, q, single);
 		//		const int laye32 = outputclouds[0]->size() / 32;
 		//		for(int i = 0; i < laye32; ++i){
 		//			int index = i * 32 + 28;
 		//			auto pt = outputclouds[0]->points[index];
 		//			single->points.push_back(pt);
 		//		}
-#ifdef VIEWER
+#endif //ee
+		useOne32(outputclouds[0], new32, high_cloud_32, low_cloud_32, 34, grid, q, single);
+
+		#ifdef VIEWER
 		cloud_viewer_->removeAllPointClouds();
 		{
 			//test
@@ -2166,7 +2209,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, Eigen::Quaterniond q){
 	}//lidarCloudMsgs_ != nullptr
 }
 void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
-	//		cout<<"height map timestamp is "<<height_msg->header.stamp<<endl;
+	cout<<"height map timestamp is "<<height_msg->header.stamp<<endl;
 	//	sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
 	//	if(tmpmsg==nullptr) return;
 	//	double gpsstamp=tmpmsg->gps.header.stamp.toSec();
@@ -2202,18 +2245,19 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 	sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
 	if(tmpmsg==nullptr) return;
 	double gpsstamp=tmpmsg->gps.header.stamp.toSec();
-	if(gpsstamp>lidarstamp){
-		cout<<"waite for height map"<<endl;
-		qgwithhmsgs_.Push_Front(std::move(tmpmsg));
-		return;
-	}
-	while(fabs(lidarstamp-gpsstamp)>0.01){
-		if(qgwithhmsgs_.Size()==0){
-			return;//这里可以增加队列这样不用浪费一帧信息
-		}
-		tmpmsg=qgwithhmsgs_.Pop();
-		gpsstamp=tmpmsg->gps.header.stamp.toSec();
-	}
+	std::cout << " gps stamp is " << tmpmsg->gps.header.stamp << std::endl;
+//	if(gpsstamp>lidarstamp){
+//		cout<<"waite for height map"<<endl;
+//		qgwithhmsgs_.Push_Front(std::move(tmpmsg));
+//		return;
+//	}
+//	while(fabs(lidarstamp-gpsstamp)>0.02){
+//		if(qgwithhmsgs_.Size()==0){
+//			return;//这里可以增加队列这样不用浪费一帧信息
+//		}
+//		tmpmsg=qgwithhmsgs_.Pop();
+//		gpsstamp=tmpmsg->gps.header.stamp.toSec();
+//	}
 	//	{
 	//test
 	//		std::cout << lidarCloudMsgs_->header.stamp.toSec() - gpsstamp << std::endl;
@@ -2228,7 +2272,7 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 	mtx_cloud.unlock();
 	pcl::PointCloud<pcl::PointXYZI>::Ptr newcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
 
-	if(lidarCloudMsgs_ != nullptr){//
+	if(tempcloud != nullptr){//
 		double yaw = tmpmsg->heading, pitch = tmpmsg->pitch, roll = tmpmsg->roll;
 		Eigen::AngleAxisd yaw_ = Eigen::AngleAxisd(yaw * PI / 180, Eigen::Vector3d::UnitZ());
 		Eigen::AngleAxisd pitch_ = Eigen::AngleAxisd(pitch * PI / 180, Eigen::Vector3d::UnitX());
@@ -2257,9 +2301,13 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 		cv::Mat gridall = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC1);
 		cv::Mat grid16 = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
 		cv::Mat grid32 = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
-		useTwo16(grid16, gridall, test);
+		cv::Mat grid_h = cv::Mat::zeros(GRIDWH,GRIDWH,CV_32FC1);
+		cv::Mat grid_h_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
+		useTwo16(grid16, gridall, grid_h, grid_h_show, test);
 		cv::namedWindow("16",CV_WINDOW_NORMAL);
+		cv::namedWindow("3",CV_WINDOW_NORMAL);
 		cv::imshow("16", grid16);
+		cv::imshow("3", grid_h_show);
 		cv::waitKey(5);
 		if(visual_on){
 
@@ -2368,7 +2416,7 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 }
 
 void gpsdatacllbak(const sensor_driver_msgs::GpswithHeadingConstPtr& msg){
-	//			cout<<"gpsdata stamp is "<<msg->gps.header.stamp<<endl;
+//	cout<<"gpsdata stamp is "<<msg->gps.header.stamp<<endl;
 	//		cout<<yprmin<<endl;
 	qgwithhmsgs_.Push(msg);
 	//	qypr.push_back(msg);
@@ -5358,6 +5406,7 @@ void process(){
 
 void showpointcloud(const sensor_msgs::PointCloud2ConstPtr& cloudmsg){
 	mtx_cloud.lock();
+	std::cout << "got lidar -- " << std::endl;
 	lidarCloudMsgs_ = cloudmsg;
 	mtx_cloud.unlock();
 	//	pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
@@ -5993,4 +6042,5 @@ int main(int argc, char** argv)
 	ros::Subscriber subGpsdata=nh.subscribe("gpsdata",10,gpsdatacllbak);
 #endif
 	ros::spin();
+	std::cout << "after spin() " << std::endl;
 }
