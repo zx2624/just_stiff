@@ -211,7 +211,7 @@ common::BlockingQueue<sensor_driver_msgs::GpswithHeadingConstPtr> qgwithhmsgs_;
 common::BlockingQueue<depth_image_utils::HeightMapConstPtr> qheightmap_;
 sensor_msgs::PointCloud2ConstPtr lidarCloudMsgs_;
 ros::Publisher pubStiffwaterOgm;
-#define VIEWER
+//#define VIEWER
 #ifdef VIEWER
 boost::shared_ptr<PCLVisualizer> 	cloud_viewer_(new PCLVisualizer ("zx Cloud"));
 #endif
