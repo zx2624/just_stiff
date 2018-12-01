@@ -65,7 +65,7 @@
 #include "lanelet_map_msgs/Way.h"
 
 
-bool visual_on=false;
+bool visual_on=true;
 bool send_water=false;
 //#define lineiter
 //#define SIXT
@@ -201,8 +201,8 @@ double disdifflast=0;
 const int grid_width = 101;
 const int grid_height = 175;
 const double res = 0.4;
-cv::Mat elementero = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(9, 9));
-cv::Mat elementdil = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 7));
+cv::Mat elementero = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 7));
+cv::Mat elementdil = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
 cv::Mat elementero2 = cv::getStructuringElement(cv::MORPH_CROSS, cv::Size(9, 9));
 //Eigen::Vector3d yprlast(0,0,0);
 Eigen::Isometry3d T=Eigen::Isometry3d::Identity();
@@ -1307,9 +1307,11 @@ float pitch = 0;//不是绝对值
 double gpstime = -1;
 const float NEAR_BOUND = 25;
 const float FAR_BOUND = 45;
-const int window_big = 50;
+const int window_big = 20;
 const int window_small_32 = 5;
 const int window_small = 5;
+const float th = 0.17;
+const float th_dis = 0.65;
 const vector<int> map_j{
 	16,	18,	0,	20,	2,	22,	30,	28,	26,	24,	23,	21,	19,	17,	31,	29,	27,	25,	7,	5,	3,	1,	15,	13,	11,	9,	4,	6,	8,	10,	12,	14
 };
@@ -1341,7 +1343,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 					single->points.push_back(pt_ori);
 		}
 	}
-	for(int j = 0; j < 0; ++j){
+	for(int j = 0; j < 25; ++j){
 //				if( map_j[j] >  25) continue;
 		//		std::cout << " ----------------------- " << std::endl;
 		for(int i = 0; i + window_big < round32; i+=window_small_32){
@@ -1505,8 +1507,8 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 						ok = true;
 				}
 				//尝试用窗口相邻
-				if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > 0.15) ||
-						(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)){//
+				if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > th) ||
+						(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > th)){//
 //					std::cout << "tanget is ... " << tangent << std::endl;
 //					std::cout << "dis in window are  ... " << dis_in_window << std::endl;
 					int count = 0;
@@ -1601,6 +1603,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 		std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds;//多个激光雷达数据包，向量中每个元素为一个激光雷达一帧数据
 		std::vector<pcl::PointXYZI> lidarpropertys;//每一个PointType类型都表示一个单独点
 		analysisCloud(tempcloud,outputclouds,lidarpropertys);
+
 		//两侧雷达的高低点云
 		pcl::PointCloud<pcl::PointXYZI>::Ptr left_high_cloud(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr left_low_cloud(new pcl::PointCloud<pcl::PointXYZI>);
@@ -1619,7 +1622,6 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 		pcl::transformPointCloud(*outputclouds[2], *new16_right, Eigen::Vector3d(0,0,0), q);
 		const int layer = 16;
 		const int round = outputclouds[1]->points.size() / layer;
-#ifdef ee
 		//点云投影到栅格
 		for(auto pt : tempcloud->points){
 			if(pt.range < 0) continue;
@@ -1665,8 +1667,11 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 				ptr_show[3 * col_target + 2] = 255;
 			}
 		}
-		float far_bound = FAR_BOUND ;
-		for(int j = 0; j < 0; ++j){
+#ifdef NEW
+		pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q);
+#endif//NEW
+		float far_bound = FAR_BOUND;
+		for(int j = 0; j < 16; ++j){
 			for(int i = 0; i + window_big < round; ){
 				float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
 				float dis_in_window = 0;
@@ -1775,6 +1780,8 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 						if(index_high != -1 && index_low != -1)
 							break;
 					}
+					float dis_high = 0;
+					float dis_low = 0;
 					if(index_high != -1 && index_low != -1){
 						auto pt_high = outputclouds[1]->points[index_high];
 						auto pt_low = outputclouds[1]->points[index_low];
@@ -1793,8 +1800,8 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 #endif//NEW
 						float y_high = pt_high.y, x_high = pt_high.x;
 						float y_low = pt_low.y, x_low = pt_low.x;
-						float dis_high = pt_high.range;
-						float dis_low = pt_low.range;
+						dis_high = pt_high.range;
+						dis_low = pt_low.range;
 						float radius = sqrt(pow((y_high - y_low), 2) + pow((x_high - x_low), 2));
 						tangent = (z_high - z_low) / radius;
 						dis_ratio = dis_high / dis_low;
@@ -1804,8 +1811,11 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 					}
 					//尝试用窗口相邻高度突变--暂时没用上
 					//&& dis_in_window < 1.5
-					if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > 0.15) ||
-							(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)){//
+					float offset = 0;
+					if(dis_high < 10)
+						offset = 0.15;
+					if(((dis_ratio < th_dis + offset&& dis_ratio > 0.2) && z0 < 0.5 && tangent > th)
+							){// || (dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
 //						std::cout << "tanget is ... " << tangent << std::endl;
 //						std::cout << "dis in window are  ... " << dis_in_window << std::endl;
 						for(int k = i_begin; k <  i_begin + window_small; ++k){
@@ -1822,7 +1832,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 							if(!ptUseful(pt_high_ori, NEAR_BOUND)){}
 							else{
 #ifdef NEW
-								left_high_cloud->points.push_back(pt_high_ori);//todo:历史遗留问题
+								left_high_cloud->points.push_back(pt_high);//todo:历史遗留问题
 #else
 								left_high_cloud->points.push_back(pt_high_ori);
 #endif //NEW
@@ -1833,13 +1843,22 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 							dis = pt_low.range;
 							if(!ptUseful(pt_low_ori, far_bound)) continue;
 #ifdef NEW
-							left_low_cloud->points.push_back(pt_low_ori);
+							left_low_cloud->points.push_back(pt_low);
 #else
 							left_low_cloud->points.push_back(pt_low_ori);
 #endif //NEW
 						}
 						int begin_x = (x0 + 35) / 0.2, begin_y = (y0 + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
 						int end_x = (x1 + 35) / 0.2, end_y = (y1 + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+						if(begin_y < end_y){
+							swap(begin_x, end_x);
+							swap(begin_y, end_y);
+						}
+						float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
+						if(ratio < 1){
+							end_x = begin_x + ratio * (end_x - begin_x);
+							end_y = begin_y + ratio * (end_y - begin_y);
+						}
 						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
 								&& begin_y >=0 && begin_y < GRIDWH
 								&& end_y >=0 && end_y < GRIDWH){
@@ -1959,6 +1978,8 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 						if(index_high != -1 && index_low != -1)
 							break;
 					}
+					float dis_high = 0;
+					float dis_low = 0;
 					if(index_high != -1 && index_low != -1){
 						auto pt_high = outputclouds[2]->points[index_high];
 						auto pt_low = outputclouds[2]->points[index_low];
@@ -1977,8 +1998,8 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 #endif//NEW
 						float y_high = pt_high.y, x_high = pt_high.x;
 						float y_low = pt_low.y, x_low = pt_low.x;
-						float dis_high = pt_high.range;
-						float dis_low = pt_low.range;
+						dis_high = pt_high.range;
+						dis_low = pt_low.range;
 						float radius = sqrt(pow((y_high - y_low), 2) + pow((x_high - x_low), 2));
 						tangent = (z_high - z_low) / radius;
 						dis_ratio = dis_high / dis_low;
@@ -1987,11 +2008,13 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 							ok = true;
 					}
 					//尝试用窗口相邻高度突变--暂时没用上
-
-					if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > 0.15) ||
-							(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)){//
-//						std::cout << "tanget is ... " << tangent << std::endl;
-//						std::cout << "dis in window are  ... " << dis_in_window << std::endl;
+					float offset = 0;
+					if(dis_high < 10)
+						offset = 0.15;
+					if(((dis_ratio < th_dis + offset && dis_ratio > 0.2) && z0 < 0.5 && tangent > th)
+							){//(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
+						std::cout << "tangent ... " << tangent << std::endl;
+						std::cout << "dis_ratio  ... " << dis_ratio << std::endl;
 						for(int k = i_begin; k <  i_begin + window_small; ++k){
 							int index_low = k * layer + j;
 							int index_high = (k + window_small) * layer + j;
@@ -2006,7 +2029,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 							if(!ptUseful(pt_high, NEAR_BOUND)){}
 							else{
 #ifdef NEW
-								right_high_cloud->points.push_back(pt_high);
+								right_high_cloud->points.push_back(pt_high_new);
 #else
 								right_high_cloud->points.push_back(pt_high);
 #endif//NEW
@@ -2017,13 +2040,22 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 							dis = pt_low.range;
 							if(!ptUseful(pt_low, far_bound)) continue;
 #ifdef NEW
-							right_low_cloud->points.push_back(pt_low);
+							right_low_cloud->points.push_back(pt_low_new);
 #else
 							right_low_cloud->points.push_back(pt_low);
 #endif//NEW
 						}
 						int begin_x = (x0 + 35) / 0.2, begin_y = (y0 + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
 						int end_x = (x1 + 35) / 0.2, end_y = (y1 + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+						if(begin_y < end_y){
+							swap(begin_x, end_x);
+							swap(begin_y, end_y);
+						}
+						float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
+						if(ratio < 1){
+							end_x = begin_x + ratio * (end_x - begin_x);
+							end_y = begin_y + ratio * (end_y - begin_y);
+						}
 						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
 								&& begin_y >=0 && begin_y < GRIDWH
 								&& end_y >=0 && end_y < GRIDWH){
@@ -2046,7 +2078,6 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 		//			auto pt = outputclouds[0]->points[index];
 		//			single->points.push_back(pt);
 		//		}
-#endif //ee
 		useOne32(outputclouds[0], new32, high_cloud_32, low_cloud_32, 34, grid, q, single);
 
 		#ifdef VIEWER
@@ -2076,12 +2107,20 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 			}
 #endif //NEW
 		}
-		if ( tempcloud->size() > 0 )//
+		if (tempcloud->size() > 0)//
 		{
 			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( tempcloud, 0, 255, 0 );
 			if (!cloud_viewer_->updatePointCloud(tempcloud,cloudHandler, "0"))
 			{
 				cloud_viewer_->addPointCloud(tempcloud, cloudHandler, "0");
+			}
+		}
+		if (0)//new16_right->size() >
+		{
+			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( new16_right, 0, 255, 0 );
+			if (!cloud_viewer_->updatePointCloud(new16_right,cloudHandler, "new16r"))
+			{
+				cloud_viewer_->addPointCloud(new16_right, cloudHandler, "new16l");
 			}
 		}
 		if (  0 ) //outputclouds[0]->size() >
@@ -2209,7 +2248,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 	}//lidarCloudMsgs_ != nullptr
 }
 void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
-	cout<<"height map timestamp is "<<height_msg->header.stamp<<endl;
+//	cout<<"height map timestamp is "<<height_msg->header.stamp<<endl;
 	//	sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
 	//	if(tmpmsg==nullptr) return;
 	//	double gpsstamp=tmpmsg->gps.header.stamp.toSec();
@@ -2240,24 +2279,25 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 	//	}
 	//	yprmin<<100,100,100;
 	//	cv::namedWindow("range",CV_WINDOW_NORMAL);
-
-	double lidarstamp = lidarCloudMsgs_->header.stamp.toSec();
 	sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
-	if(tmpmsg==nullptr) return;
+	if(tmpmsg==nullptr || lidarCloudMsgs_ == nullptr){//
+		std::cout << "I m returnning ....... " << std::endl;
+		return;
+	}
+	double lidarstamp = lidarCloudMsgs_->header.stamp.toSec();
 	double gpsstamp=tmpmsg->gps.header.stamp.toSec();
-	std::cout << " gps stamp is " << tmpmsg->gps.header.stamp << std::endl;
-//	if(gpsstamp>lidarstamp){
-//		cout<<"waite for height map"<<endl;
-//		qgwithhmsgs_.Push_Front(std::move(tmpmsg));
-//		return;
-//	}
-//	while(fabs(lidarstamp-gpsstamp)>0.02){
-//		if(qgwithhmsgs_.Size()==0){
-//			return;//这里可以增加队列这样不用浪费一帧信息
-//		}
-//		tmpmsg=qgwithhmsgs_.Pop();
-//		gpsstamp=tmpmsg->gps.header.stamp.toSec();
-//	}
+	if(gpsstamp>lidarstamp){
+		cout<<"waite for height map"<<endl;
+		qgwithhmsgs_.Push_Front(std::move(tmpmsg));
+		return;
+	}
+	while(fabs(lidarstamp-gpsstamp)>0.02){
+		if(qgwithhmsgs_.Size()==0){
+			return;//这里可以增加队列这样不用浪费一帧信息
+		}
+		tmpmsg=qgwithhmsgs_.Pop();
+		gpsstamp=tmpmsg->gps.header.stamp.toSec();
+	}
 	//	{
 	//test
 	//		std::cout << lidarCloudMsgs_->header.stamp.toSec() - gpsstamp << std::endl;
@@ -2303,6 +2343,69 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 		cv::Mat grid32 = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
 		cv::Mat grid_h = cv::Mat::zeros(GRIDWH,GRIDWH,CV_32FC1);
 		cv::Mat grid_h_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
+		{//ｔｅｓｔ
+//			int grid_width = GRIDWH / 4;
+//			cv::Mat grid_max = cv::Mat::ones(grid_width,grid_width,CV_32FC1) * (-10);
+//			cv::Mat grid_min = cv::Mat::ones(grid_width,grid_width,CV_32FC1) * 10;
+//			cv::Mat grid_count = cv::Mat::zeros(grid_width,grid_width,CV_8UC1);
+//			cv::Mat grid_show = cv::Mat::zeros(grid_width,grid_width,CV_8UC3);
+//			for(auto pt : tempcloud->points){
+//				if(pt.range < 0) continue;
+//				float x = pt.x;
+//				float y = pt.y;
+//				float z = pt.z;
+//				Eigen::Vector3d pt_rec(x, y, z);
+//				if(z > 1) continue;
+//				float z_rec = (test * pt_rec).z();
+//				int col=boost::math::round((x+35)/0.8);//干！！！！！！！！！！！
+//				int row=boost::math::round((y+20)/0.8);
+//				if(col >= 0 && col < grid_width && row >= 0 && row < grid_width){
+//					auto ptr_max = grid_max.ptr<float>(row);
+//					auto ptr_min = grid_min.ptr<float>(row);
+//					auto ptr_count = grid_count.ptr<unsigned char>(row);
+//					auto ptr_show = grid_show.ptr<unsigned char>(grid_width - 1 - row);
+//					ptr_show[3*col + 1] = 255;
+//					if(z > ptr_max[col]){
+//						ptr_max[col] = z;
+//					}
+//					if(z < ptr_min[col]){
+//						ptr_min[col] = z;
+//					}
+//					if(ptr_max[col] - ptr_min[col] > 0.3){
+//						ptr_count[col]++;
+////						if(ptr_count[col] > 5){
+////							ptr_show[3*col + 1] = 0;
+////							ptr_show[3*col + 2] = 255;
+////						}
+//					}
+//				}
+//			}
+//			for(int row = 20 / 0.8; row < 35 / 0.8; row++){
+//				float max = -11, min = 11;
+//				int x_max = 0, x_min = 0;
+//				for(int col = 37 / 0.8; col < 37 / 0.8 + 5; col++){
+//					int index = row * grid_width + col;
+//					if(grid_max.at<float>(row, col) > max){
+//						max = grid_max.at<float>(row, col);
+//						x_max = col;
+//					}
+//					if(grid_max.at<float>(row, col) < min){
+//						min = grid_max.at<float>(row, col);
+//						x_min = col;
+//					}
+//				}
+//
+//				if(max - min > 0.5 && x_max < x_min && max < 0.3){
+//					auto ptr_show = grid_show.ptr<unsigned char>(grid_width - 1 - row);
+//					for(int col = 37 / 0.8; col < 37 / 0.8 + 5; col++){
+//						ptr_show[3*col + 1] = 0;
+//						ptr_show[3*col + 2] = 255;
+//					}
+//				}
+//			}
+//			cv::namedWindow("hdiff",CV_WINDOW_NORMAL);
+//			cv::imshow("hdiff", grid_show);
+		}//test
 		useTwo16(grid16, gridall, grid_h, grid_h_show, test);
 		cv::namedWindow("16",CV_WINDOW_NORMAL);
 		cv::namedWindow("3",CV_WINDOW_NORMAL);
@@ -2346,8 +2449,8 @@ void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 		}
 
 
-		//	cv::dilate(gridall,gridall,elementdil);
-		//	cv::erode(gridall,gridall,elementero);
+			cv::dilate(gridall,gridall,elementdil);
+			cv::erode(gridall,gridall,elementero);
 		//	cv::dilate(gridall,gridall,elementero2);
 
 		for(int row=0;row<351;row++){
@@ -5404,9 +5507,8 @@ void process(){
 }
 #endif
 
-void showpointcloud(const sensor_msgs::PointCloud2ConstPtr& cloudmsg){
+void lidar_handler(const sensor_msgs::PointCloud2ConstPtr& cloudmsg){
 	mtx_cloud.lock();
-	std::cout << "got lidar -- " << std::endl;
 	lidarCloudMsgs_ = cloudmsg;
 	mtx_cloud.unlock();
 	//	pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
@@ -5907,7 +6009,7 @@ int main(int argc, char** argv)
 	FLAGS_colorlogtostderr = true; //设置输出到屏幕的日志显示相应颜色
 
 	ros::param::get("~visulization",visual_on);
-
+	visual_on = true;
 	for(int j=0;j<870;j++){
 		double angle=(j*360.0/870);
 		sintable[j]=std::sin(angle*PI/180);
@@ -6037,7 +6139,7 @@ int main(int argc, char** argv)
 	std::cout << "=======================================================" << std::endl;
 	std::cout << R << std::endl;
 
-	ros::Subscriber subLaserCloudFullRes_ = nh.subscribe("lidar_cloud_calibrated", 1,showpointcloud);
+	ros::Subscriber subLaserCloudFullRes_ = nh.subscribe("lidar_cloud_calibrated", 1,lidar_handler);
 	ros::Subscriber subHeightMap = nh.subscribe("lidar_height_map",1,callback);
 	ros::Subscriber subGpsdata=nh.subscribe("gpsdata",10,gpsdatacllbak);
 #endif

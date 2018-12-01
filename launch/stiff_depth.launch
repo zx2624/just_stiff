@@ -20,12 +20,6 @@
   	<param name="config_file" value="$(arg configfile)"/>
   </node>
 
-  <node pkg="sensor_driver" type="getinsdata" name="getinsdata" args="$(arg glogparam)" output="screen">
-  </node>
-
-  <node pkg="sensor_driver" type="getgpsdata" name="getgpsdata" args="$(arg glogparam)" output="screen">
-  <remap from="gpsdata" to="GPSmsg" />
-  </node>
   <node pkg="sensor_driver" type="getmultirslidardata" name="getmultirslidardata" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=2   $(arg logdir)" output="screen"><param     name="fix_frame" value="true"/>
   </node>
 
@@ -34,7 +28,10 @@
        <param name="laser_param" value="$(find depth_image_utils)/config/toyota.txt" />
   </node>
 
-
+  <node pkg="stiff_depth" type="stiff_depth" name="stiff_depth" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=2   $(arg logdir)" output="screen">
+  <param name="fix_frame" value="true"/>
+  <param name="visulization" value="false"/>
+  </node>
 
 
 
