@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <param name="robot_description"
+    textfile="$(find sensor_driver)/urdf/multivelodyne_3d.urdf" />
+
+  <param name="publish_frequency" value="50." />
+    
+  <node name="robot_state_publisher" pkg="robot_state_publisher"
+    type="robot_state_publisher" />
+
+  <arg name="rviz" default="false" />
+  <arg name = "run_slam_mapping" default = "false"/> 
+  <arg name = "run_back_lidar" default = "true"/> 
+
+  <arg name="configfile" default="$(find sensor_driver)/config/configmultirslidar-toyota.xml" />
+  <arg name="logdir" default="--log_dir=/home/zx/data" />
+  <arg name="glogparam" default="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=5   $(arg logdir)" />
+
+  <node pkg="sensor_driver" type="masternode" name="masternode" args="$(arg glogparam)" output="screen">
+  	<param name="config_file" value="$(arg configfile)"/>
+  </node>
+
+  <node pkg="sensor_driver" type="getmultirslidardata" name="getmultirslidardata" args="--logtostderr=0  --colorlogtostderr=1 --stderrthreshold=2   $(arg logdir)" output="screen"><param     name="fix_frame" value="true"/>
+  </node>
+
+
+
+
+</launch>

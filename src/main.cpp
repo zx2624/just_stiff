@@ -211,7 +211,7 @@ common::BlockingQueue<sensor_driver_msgs::GpswithHeadingConstPtr> qgwithhmsgs_;
 common::BlockingQueue<depth_image_utils::HeightMapConstPtr> qheightmap_;
 sensor_msgs::PointCloud2ConstPtr lidarCloudMsgs_;
 ros::Publisher pubStiffwaterOgm;
-//#define VIEWER
+#define VIEWER
 #ifdef VIEWER
 boost::shared_ptr<PCLVisualizer> 	cloud_viewer_(new PCLVisualizer ("zx Cloud"));
 #endif
@@ -1507,6 +1507,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 						ok = true;
 				}
 				//尝试用窗口相邻
+				//todo:this th
 				if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > th) ||
 						(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > th)){//
 //					std::cout << "tanget is ... " << tangent << std::endl;
@@ -1593,7 +1594,7 @@ void useOne32(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud,
 	}
 }
 #define NEW
-void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_show, Eigen::Quaterniond q){
+void useTwo16(cv::Mat grid, cv::Mat grid_msg_show, cv::Mat grid_height, cv::Mat grid_h_show, Eigen::Quaterniond q){
 	pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
 	mtx_cloud.lock();
 	if(lidarCloudMsgs_ != nullptr)
@@ -1634,7 +1635,7 @@ void useTwo16(cv::Mat grid, cv::Mat grid32, cv::Mat grid_height, cv::Mat grid_h_
 			int row=boost::math::round((y+20)/0.2);
 			if(col >= 0 && col < GRIDWH && row >= 0 && row < GRIDWH){
 				auto ptr = grid.ptr<unsigned char>(GRIDWH - 1 - row);
-				auto ptrall = grid32.ptr<unsigned char>(GRIDWH - 1 - row);
+				auto ptrall = grid_msg_show.ptr<unsigned char>(GRIDWH - 1 - row);
 				auto ptr_show = grid_h_show.ptr<unsigned char>(GRIDWH - 1 - row);
 				ptrall[col] = 1;
 				ptr[3*col + 1] = 255;

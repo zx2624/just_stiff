@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(stiff_depth)
+project(stiff_detection)
 
 set(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
 
@@ -33,7 +33,7 @@ set(BUILD_SHARED_LIBS OFF)
 include("${IVCOMMON_CMAKE_DIR}/functions.cmake")
 google_initialize_ivcommon_project()
 
-install(DIRECTORY launch DESTINATION share/stiff_depth/)
+install(DIRECTORY launch DESTINATION share/stiff_detection/)
 
 include(FindPkgConfig)
 find_package(LuaGoogle REQUIRED)
@@ -55,22 +55,22 @@ catkin_package(
 )
 include_directories(SYSTEM  ${catkin_INCLUDE_DIRS} ${ivcommon_INCLUDE_DIRS} ${LUA_INCLUDE_DIR} ${PCL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} src include)
 
-add_executable(stiff_depth src/main.cpp )
-target_link_libraries(stiff_depth PUBLIC ${catkin_LIBRARIES}  ${ivcommon_LIBRARIES}  ${PCL_LIBRARIES}  ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${sensor_driver_INCLUDE_DIRS} utils ivsensor glog gflags )
+add_executable(stiff_detection src/stiff_detection_main.cc src/stiff_detection.cc )#
+target_link_libraries(stiff_detection PUBLIC ${catkin_LIBRARIES}  ${ivcommon_LIBRARIES}  ${PCL_LIBRARIES}  ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${sensor_driver_INCLUDE_DIRS} utils ivsensor glog gflags )
 
 set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} -std=c++11")
-set_target_properties(stiff_depth PROPERTIES
+set_target_properties(stiff_detection PROPERTIES
   COMPILE_FLAGS ${TARGET_COMPILE_FLAGS})
 
-install(TARGETS stiff_depth
+install(TARGETS stiff_detection
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 install(
-  TARGETS stiff_depth
-  EXPORT stiff_depthExport#这是干嘛的
+  TARGETS stiff_detection
+  EXPORT stiff_detectionExport#这是干嘛的
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
