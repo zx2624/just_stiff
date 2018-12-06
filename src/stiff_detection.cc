@@ -6,7 +6,7 @@ StiffDetection::StiffDetection(ros::NodeHandle& nh):nh_(nh)
 	if(visual_on)
 		std::cout << "@stiff_detection=========visualization on ===========" << std::endl;
 	sub_Lidar_ = nh_.subscribe<sensor_msgs::PointCloud2>
-	("lidar_cloud_calibrated", 1, boost::bind(&StiffDetection::LidarMsgHandler,this,_1));
+	("lidar_cloud_calibrated", 10, boost::bind(&StiffDetection::LidarMsgHandler,this,_1));
 	sub_Gpsdata_ = nh_.subscribe<sensor_driver_msgs::GpswithHeading>
 	("gpsdata", 30, boost::bind(&StiffDetection::GpsdataMsgHandler,this,_1));
 	pub_Stiff_ = nh_.advertise<stiff_msgs::stiffwater> ("stiffwaterogm",20);
@@ -46,7 +46,6 @@ void StiffDetection::process(){
 		}
 		while(lidarstamp-gpsstamp>0.02){
 			if(qgwithhmsgs_.Size()==0){
-
 				std::cout << "----------------gps q 0 " << std::endl;
 				usleep(100000);
 				continue;
@@ -89,8 +88,11 @@ void StiffDetection::process(){
 					ptr[3*col + 1] = 255;
 				}
 			}
+			double t_begin = ros::Time::now().toSec();
 			Detection16(outputclouds, grid_show, q);
 			Detection32(outputclouds, grid_show, q);
+			double t_end = ros::Time::now().toSec();
+			std::cout << "time cost --- " << (t_end - t_begin) * 1000 << "ms" << std::endl;
 			PublishMsg(grid_show, grid_msg_show, lidarCloudMsgs_->header.stamp);
 			if(visual_on){
 				cv::namedWindow("gridshow",CV_WINDOW_NORMAL);
@@ -103,7 +105,7 @@ void StiffDetection::process(){
 #endif //CLOUDVIEWER
 
 		}
-		usleep(30000);
+//		usleep(30000);
 		double t2 = ros::Time::now().toSec();
 //		std::cout << "time cost: " << t2 - t1 << std::endl;
 	}
@@ -118,10 +120,13 @@ bool StiffDetection::ptUseful(pcl::PointXYZI& pt, float dis_th){
 	return true;
 }
 void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds ,cv::Mat grid_show, Eigen::Quaterniond q){
+	if(outputclouds.size() < 3) return;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr new16_left(new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::PointCloud<pcl::PointXYZI>::Ptr new16_right(new pcl::PointCloud<pcl::PointXYZI>);
-	pcl::transformPointCloud(*outputclouds[1], *new16_left, Eigen::Vector3d(0,0,0), q);
-	pcl::transformPointCloud(*outputclouds[2], *new16_right, Eigen::Vector3d(0,0,0), q);
+	if(outputclouds[1]->size() > 0)
+		pcl::transformPointCloud(*outputclouds[1], *new16_left, Eigen::Vector3d(0,0,0), q);
+	if(outputclouds[2]->size() > 0)
+		pcl::transformPointCloud(*outputclouds[2], *new16_right, Eigen::Vector3d(0,0,0), q);
 	vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> new_clouds{new16_left, new16_right};
 
 	float far_bound = FAR_BOUND;
@@ -525,12 +530,13 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 }
 void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds,
 		cv::Mat grid_show, Eigen::Quaterniond q){
+	//todo:如果丢失点云的话这32线还能用吗
+	if(outputclouds.size() < 3) return;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr cloud = outputclouds[0];
 	pcl::PointCloud<pcl::PointXYZI>::Ptr newcloud(new pcl::PointCloud<pcl::PointXYZI>);
 	pcl::transformPointCloud(*cloud, *newcloud, Eigen::Vector3d(0,0,0), q);
 	const int round32 = cloud->size() / 32;
 	float far_bound = FAR_BOUND;
-
 
 	for(int j = 0; j < 25; ++j){
 		//				if( map_j[j] >  25) continue;
@@ -697,8 +703,8 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 				//尝试用窗口相邻
 				//todo:this th
-				if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > th) ||
-						(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > th)){//
+				if(((dis_ratio < 0.6 && dis_ratio > 0.2) && z0 < 0.5 && tangent > th)){// ||
+//					(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > th)
 					//					std::cout << "tanget is ... " << tangent << std::endl;
 					//					std::cout << "dis in window are  ... " << dis_in_window << std::endl;
 					int count = 0;
@@ -891,12 +897,10 @@ void StiffDetection::analysisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr inputclo
 
 }
 void StiffDetection::LidarMsgHandler(const sensor_msgs::PointCloud2ConstPtr& msg){
-	mtx_lidar_.lock();
 	q_lidar_msgs_.Push(msg);
-	if(q_lidar_msgs_.Size() > 3){
+	if(q_lidar_msgs_.Size() > 1){
 		q_lidar_msgs_.Pop();
 	}
-	mtx_lidar_.unlock();
 }
 
 void StiffDetection::GpsdataMsgHandler(const sensor_driver_msgs::GpswithHeadingConstPtr& msg){
