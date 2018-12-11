@@ -16,15 +16,17 @@
 #include "stiff_msgs/stiffwater.h"
 #include "sensor_driver_msgs/GpswithHeading.h"
 #define PI 3.141592653
-//#define CLOUDVIEWER //点云可视化
+#define CLOUDVIEWER //点云可视化
 #define GRIDWH 351
 #define FAR_BOUND 45 //可用的远处点云范围
-#define NEAR_BOUND 45 //可用的近处点云范围
+#define NEAR_BOUND 25 //可用的近处点云范围
 #define NEW
 
 /*!
  * 此类作用：
- * 检测悬崖
+ * 分别利用经过惯导信息矫正过投影到水平面上的32线和16线雷达的同一“层”
+ * 激光雷达线之间的高度和距离突变特征，进行悬崖检测，并将检测结果进行
+ * 适当的膨胀腐蚀处理投影到栅格地图进行消息发送。
  */
 class StiffDetection{
 public:
@@ -86,6 +88,8 @@ public:
 	 * \brief 判断检测悬崖时用的激光雷达点是否有效。
 	 */
 	bool ptUseful(pcl::PointXYZI& pt, float dis_th);
+	void pub1();
+	void pub2();
 private:
 	ros::NodeHandle nh_;			 /**< nodehandle */
 	ros::Subscriber sub_Lidar_;		  /**< 订阅点云Subscriber */
@@ -100,12 +104,18 @@ private:
 	int window_small_ = 5;	/**< 小窗口的点云数量 */
 	float th_dis = 0.65;	/**< 距离突变阈值 */
 	float th = 0.18;	/**< 正切阈值 */
-	int* map_j;
+	int* map_j;	/**< 雷达线按照从低到高的索引 */
 	bool send_water = false;
-	bool visual_on = true;
+	bool visual_on = true;	/**< 是否开启可视化 */
+	double last_time_gps_ = -1;	/**< 记录上次gps时间戳 */
+	double last_time_lidar_ = -1;	/**< 记录上次雷达点云时间戳 */
+#ifdef CLOUDVIEWER
+	pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_;
+	pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_;
+#endif //CLOUDVIEWER
 
 
-	std::thread* process_thread_;
+	std::thread* process_thread_;	/**< process函数线程 */
 	std::mutex mtx_lidar_;	/**< 为lidarCloudMsgs_加锁 */
 };
 
