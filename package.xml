@@ -48,6 +48,7 @@
   <depend>depth_image_utils</depend>
   <depend>stiff_msgs</depend>
   <depend>lanelet_map_msgs</depend>
+  <depend>dynamic_reconfigure</depend>
   
  
 

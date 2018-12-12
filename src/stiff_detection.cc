@@ -40,12 +40,12 @@ void StiffDetection::process(){
 	PrepareViewer(cloud_viewer_);
 #endif //CLOUDVIEWER
 	while(ros::ok()){
-		if(ros::Time::now().toSec() - last_time_gps_ > 1 && last_time_gps_ > 0){
-			pub1();
-		}
-		if(ros::Time::now().toSec() - last_time_lidar_ > 1 && last_time_lidar_ > 0){
-			pub2();
-		}
+//		if(ros::Time::now().toSec() - last_time_gps_ > 1 && last_time_gps_ > 0){
+//			pub1();
+//		}
+//		if(ros::Time::now().toSec() - last_time_lidar_ > 1 && last_time_lidar_ > 0){
+//			pub2();
+//		}
 		sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
 		if(tmpmsg == nullptr){
 			std::cout << "no gps data, continue" << std::endl;
@@ -87,13 +87,10 @@ void StiffDetection::process(){
 		cv::Mat grid_msg_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC1);
 		cv::Mat grid_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
 		double t1 = ros::Time::now().toSec();
-//		std::cout << pitch << " " << roll << std::endl;
 		if(lidarCloudMsgs_){
 			pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
-			mtx_lidar_.lock();
 			if(lidarCloudMsgs_ != nullptr)
 				pcl::fromROSMsg(*lidarCloudMsgs_, *tempcloud);//获取当前帧点云数据
-			mtx_lidar_.unlock();
 			std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds;//多个激光雷达数据包，向量中每个元素为一个激光雷达一帧数据
 			std::vector<pcl::PointXYZI> lidarpropertys;//每一个PointType类型都表示一个单独点
 			analysisCloud(tempcloud,outputclouds,lidarpropertys);
@@ -133,7 +130,16 @@ void StiffDetection::process(){
 				cv::waitKey(3);
 			}
 #ifdef CLOUDVIEWER
-			ShowCloud(cloud_viewer_, tempcloud);
+			pcl::PointCloud<pcl::PointXYZI>::Ptr single(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
+			int round = outputclouds[0]->size() / 32;
+			for(int j = 0; j < 32; j++){
+				if(j != 14 && j!= 15) continue;
+				for(int i = 624; i < 634; i++){
+					int index = i * 32 + map_j[j];
+					single->points.push_back(outputclouds[0]->points[index]);
+				}
+			}
+			ShowCloud(cloud_viewer_, outputclouds[0]);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
@@ -161,7 +167,7 @@ void StiffDetection::pub1(){
 	msg_send.resolution = 0.2;
 	msg_send.vehicle_x = 100;
 	msg_send.vehicle_y = 100;
-	msg_send.monitor_state = 1;//1代表gps超过1s未收到数据
+//	msg_send.monitor_state = 1;//1代表gps超过1s未收到数据
 	msg_send.data = vector<short>(msg_send.ogmheight * msg_send.ogmwidth, 0);
 	pub_Stiff_.publish(msg_send);
 }
@@ -174,7 +180,7 @@ void StiffDetection::pub2(){
 	msg_send.resolution = 0.2;
 	msg_send.vehicle_x = 100;
 	msg_send.vehicle_y = 100;
-	msg_send.monitor_state = 2;//2代表lidar超过1s未收到数据
+//	msg_send.monitor_state = 2;//2代表lidar超过1s未收到数据
 	msg_send.data = vector<short>(msg_send.ogmheight * msg_send.ogmwidth, 0);
 	pub_Stiff_.publish(msg_send);
 }
@@ -193,9 +199,12 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	//设置有效点云的最远有效阈值
 	float far_bound = FAR_BOUND;
 	const int layer = 16;
-	int round = outputclouds[1]->points.size() / layer;
+	int round = min(outputclouds[1]->points.size() / layer, outputclouds[2]->points.size() / layer);
+	std::cout << "16 before ---" << std::endl;
 	for(int j = 0; j < 16; ++j){
-		for(int i = 0; i + window_big_ < round; ){
+		for(int i = 0; i + window_big_ < round - 20; ){
+
+
 			//height_diff_most 大窗口内两个小窗口间最大平均高度差
 			//x0，y0，x1，y1，z0，z1 高低小窗口内点云的平均坐标
 			float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
@@ -265,7 +274,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					x_low += x;
 					y_low += y;
 				}
-				if(count > window_small_ / 2) {
+				if(count > 0) {
 					z_low = z_low / count;
 					x_low = x_low / count;
 					y_low = y_low / count;
@@ -276,7 +285,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					height_diff =  z_low - z_high;
 				}
 				//寻找高度差最大的两个小窗口
-				if(height_diff < - 0.6 && height_diff < height_diff_most && count > window_small_ / 2){
+				if(height_diff < th_height && height_diff < height_diff_most && count > 0){
 					dis_ratio = dis_av_high / dis_av_low;
 					dis_tocheck = dis_av_high;
 					height_diff_most = height_diff;
@@ -328,8 +337,10 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					dis_high = pt_high.range;
 					dis_low = pt_low.range;
 					float radius = sqrt(pow((y_high - y_low), 2) + pow((x_high - x_low), 2));
-//					tangent = (z_high - z_low) / radius;
+#ifdef NEIGHBOUR
+					tangent = (z_high - z_low) / radius;
 //					dis_ratio = dis_high / dis_low;
+#endif //NEIGHBOUR
 					z_diff_nb = z_high - z_low;
 				}
 				//尝试用窗口相邻高度突变--暂时没用上
@@ -338,7 +349,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				if(dis_high < 10)
 					offset = 0;
 				//利用距离突变和正切值作为阈值进行筛选
-				if(((dis_ratio < th_dis + offset&& dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th)
+				if(((dis_ratio < th_dis + offset&& dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th_tan_16)
 				){// || (dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
 					//						std::cout << "tanget is ... " << tangent << std::endl;
 //					std::cout  << z1 <<  "  ... " <<  z0 << std::endl;
@@ -479,7 +490,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					height_diff =  z_low - z_high;
 				}
 				sort(ys_in_window.begin(), ys_in_window.end());
-				if(height_diff < - 0.6 && height_diff < height_diff_most && count > window_small_ / 2){
+				if(height_diff < th_height && height_diff < height_diff_most && count > 0){
 					dis_ratio = dis_av_high / dis_av_low;
 					dis_tocheck = dis_av_high;
 					height_diff_most = height_diff;
@@ -529,8 +540,10 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					dis_high = pt_high.range;
 					dis_low = pt_low.range;
 					float radius = sqrt(pow((y_high - y_low), 2) + pow((x_high - x_low), 2));
-//					tangent = (z_high - z_low) / radius;
+#ifdef NEIGHBOUR
+					tangent = (z_high - z_low) / radius;
 //					dis_ratio = dis_high / dis_low;
+#endif //NEIGHBOUR
 					z_diff_nb = z_high - z_low;
 					if(z_high - z_low > 0.5)
 						ok = true;
@@ -538,7 +551,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				float offset = 0;
 				if(dis_high < 10)
 					offset = 0;
-				if(((dis_ratio < th_dis + offset && dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th)
+				if(((dis_ratio < th_dis + offset && dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th_tan_16)
 				){//(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
 					//					std::cout << "tangent ... " << tangent << std::endl;
 //					std::cout  << z1 <<  "  ... " <<  z0 << std::endl;
@@ -607,10 +620,12 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	pcl::transformPointCloud(*cloud, *newcloud, Eigen::Vector3d(0,0,0), q);
 	const int round32 = cloud->size() / 32;
 	float far_bound = FAR_BOUND;
+
 	for(int j = 0; j < 25; ++j){
-		//				if( map_j[j] >  25) continue;
-		std::cout << " ----------------------- " << j << std::endl;
-		for(int i = 0; i + window_big_ < round32; i+=window_small_){
+		for(int i = 0; i + window_big_ < round32 - 100; i+=window_small_){
+
+			int index = i * 32 + j;
+//			std::cout << "=== " << i << std::endl;
 			float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
 			float dis_in_window = 0;
 			int i_begin = 0;
@@ -721,7 +736,7 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				if(abs(z_high) > 0.0001 && abs(z_low) > 0.0001){
 					height_diff =  z_low - z_high;
 				}
-				if(height_diff < - 0.6 && height_diff < height_diff_most && count > 0){
+				if(height_diff < th_height && height_diff < height_diff_most && count > 0){
 					dis_ratio = dis_av_high / dis_av_low;
 					dis_tocheck = dis_av_high;
 					height_diff_most = height_diff;
@@ -764,14 +779,16 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float dis_high = pt_high.range;
 					float dis_low = pt_low.range;
 					float radius = y_high - y_low;
-					//					tangent = (z_high - z_low) / radius;
-					//					dis_ratio = dis_high / dis_low;
+#ifdef NEIGHBOUR
+					tangent = (z_high - z_low) / radius;
+//					dis_ratio = dis_high / dis_low;
+#endif //NEIGHBOUR
 					z_diff_nb = z_high - z_low;
 					if(z_high - z_low > 0.5)
 						ok = true;
 				}
 				//todo:this th
-				if(((dis_ratio < th_dis && dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th)){// ||
+				if(((dis_ratio < th_dis && dis_ratio > 0.2) && z0 < th_z0 && z1 < th_z1 && tangent > th_tan_32)){// ||
 //					(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > th)
 					//					std::cout << "tanget is ... " << tangent << std::endl;
 //					std::cout  << z1 <<  "  ... " <<  z0 << std::endl;
@@ -843,6 +860,9 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						swap(begin_x, end_x);
 						swap(begin_y, end_y);
 					}
+//					if(begin_x > GRIDWH / 2)
+//						std::cout << "the z0 z1 -- " << z0 << " " << z1 << " " <<
+//						i_begin << std::endl;
 					float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
 					if(ratio < 1){
 						end_x = begin_x + ratio * (end_x - begin_x);
@@ -868,7 +888,7 @@ void StiffDetection::PublishMsg(cv::Mat grid_show, cv::Mat grid_msg_show, ros::T
 	msg_send.resolution = 0.2;
 	msg_send.vehicle_x = 100;
 	msg_send.vehicle_y = 100;
-	msg_send.monitor_state = 0;
+//	msg_send.monitor_state = 0;
 	for(int row=0;row<GRIDWH;row++){
 		unsigned char* ptr_msg_show=grid_msg_show.ptr<unsigned char>(GRIDWH-1-row);
 		unsigned char* ptr_show=grid_show.ptr<unsigned char>(GRIDWH-1-row);
@@ -988,7 +1008,7 @@ void StiffDetection::analysisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr inputclo
 }
 void StiffDetection::LidarMsgHandler(const sensor_msgs::PointCloud2ConstPtr& msg){
 	q_lidar_msgs_.Push(msg);
-	if(q_lidar_msgs_.Size() > 1){
+	if(q_lidar_msgs_.Size() > 3){
 		q_lidar_msgs_.Pop();
 	}
 }

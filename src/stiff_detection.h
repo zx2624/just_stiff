@@ -15,11 +15,16 @@
 #include "common/blocking_queue.h"
 #include "stiff_msgs/stiffwater.h"
 #include "sensor_driver_msgs/GpswithHeading.h"
+#include "std_msgs/Int8.h"
+#include "stiff_detection/stiff_dy_paramConfig.h"
+#include <dynamic_reconfigure/server.h>
+
 #define PI 3.141592653
 #define CLOUDVIEWER //点云可视化
 #define GRIDWH 351
 #define FAR_BOUND 45 //可用的远处点云范围
 #define NEAR_BOUND 25 //可用的近处点云范围
+//#define NEIGHBOUR
 #define NEW
 
 /*!
@@ -90,6 +95,25 @@ public:
 	bool ptUseful(pcl::PointXYZI& pt, float dis_th);
 	void pub1();
 	void pub2();
+	void dyCallback(stiff_detection::stiff_dy_paramConfig &config, uint32_t level)
+	{
+		ROS_INFO("动态参数--- th_dis: %f,  th_tan_16 %f, th_tan_32 %f, th_height %f \n th_z0: %f, th_z1: %f"
+			,
+
+			config.th_dis,
+			config.th_tan_16,
+			config.th_tan_32,
+			config.th_z0,
+			config.th_z1,
+			config.th_height);
+		th_dis  = config.th_dis;
+		th_tan_16 = config.th_tan_16;
+		th_tan_32 = config.th_tan_32;
+		th_z0 = config.th_z0;
+		th_z1 = config.th_z1;
+		th_height = config.th_height;
+
+	}
 private:
 	ros::NodeHandle nh_;			 /**< nodehandle */
 	ros::Subscriber sub_Lidar_;		  /**< 订阅点云Subscriber */
@@ -103,7 +127,11 @@ private:
 	int window_big_ = 20;	/**< 大窗口的点云数量 */
 	int window_small_ = 5;	/**< 小窗口的点云数量 */
 	float th_dis = 0.65;	/**< 距离突变阈值 */
-	float th = 0.18;	/**< 正切阈值 */
+	float th_tan_16 = 0.18;	/**< 16线正切阈值 */
+	float th_tan_32 = 0.15;	/**< 32线正切阈值 */
+	float th_height = -0.6;	/**< 高度阈值 */
+	float th_z0 = 0.5;	/**< 障碍物过滤阈值 */
+	float th_z1 = -0.5;	/**< 悬崖最低高度阈值 */
 	int* map_j;	/**< 雷达线按照从低到高的索引 */
 	bool send_water = false;
 	bool visual_on = true;	/**< 是否开启可视化 */

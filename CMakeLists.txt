@@ -20,6 +20,7 @@ set(PACKAGE_DEPENDENCIES
   tf2_ros
   urdf
   visualization_msgs
+  dynamic_reconfigure
   #sensor_driver
   #stiff_water_msg
 )
@@ -47,13 +48,17 @@ find_package(Boost REQUIRED COMPONENTS system iostreams)
 
 #install(DIRECTORY launch DESTINATION share/covgrid_slam_ros/)
 #install(DIRECTORY rviz_cfg DESTINATION share/covgrid_slam_ros/)
+include_directories(SYSTEM  ${catkin_INCLUDE_DIRS} ${ivcommon_INCLUDE_DIRS} ${LUA_INCLUDE_DIR} ${PCL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} src include)
+ generate_dynamic_reconfigure_options(
+   cfg/stiff_dy_param.cfg
+ )
 
 catkin_package(
   CATKIN_DEPENDS ${PACKAGE_DEPENDENCIES}
   DEPENDS EIGEN3 PCL OpenCV
   INCLUDE_DIRS src
 )
-include_directories(SYSTEM  ${catkin_INCLUDE_DIRS} ${ivcommon_INCLUDE_DIRS} ${LUA_INCLUDE_DIR} ${PCL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} src include)
+
 
 add_executable(stiff_detection src/stiff_detection_main.cc src/stiff_detection.cc )#
 target_link_libraries(stiff_detection PUBLIC ${catkin_LIBRARIES}  ${ivcommon_LIBRARIES}  ${PCL_LIBRARIES}  ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${sensor_driver_INCLUDE_DIRS} utils ivsensor glog gflags )
