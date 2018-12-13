@@ -23,7 +23,7 @@
 #define CLOUDVIEWER //点云可视化
 #define GRIDWH 351
 #define FAR_BOUND 45 //可用的远处点云范围
-#define NEAR_BOUND 25 //可用的近处点云范围
+#define NEAR_BOUND 45 //可用的近处点云范围
 //#define NEIGHBOUR
 #define NEW
 
