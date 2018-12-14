@@ -42,12 +42,9 @@ bool send_water=false;
 //#define USENEIGHBER
 #define CONDITION(x) if(0)
 #define PI 3.141592653
-#define WINDOW 10
-#define COUNTTHRESH 6
-#define ZEROCOUNTTH 4
 #define TESTSHOW
 //#define COUNTTHRESH 6
-//栅格地图的尺寸呵呵分辨率
+//栅格地图的尺寸和分辨率
 #define HEIGHTTHRESH 0.2
 #define GRIDWH 351
 //64线激光雷达的内参--垂直角度
@@ -120,8 +117,6 @@ double pitchrad64[64] = {1.9367,
 //用于根据激光雷达点的距离和垂直角度以及水平角度反算xyz坐标的sintable、costable
 double sintable[870];
 double costable[870];
-double disdiff=0;
-double disdifflast=0;
 //膨胀腐蚀的元素的形状大小
 cv::Mat elementero = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(7, 7));
 cv::Mat elementdil = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
@@ -132,8 +127,9 @@ common::BlockingQueue<sensor_driver_msgs::GpswithHeadingConstPtr> qgwithhmsgs_;
 common::BlockingQueue<depth_image_utils::HeightMapConstPtr> qheightmap_;
 //用于发送检测结果的publisher
 ros::Publisher pubStiffwaterOgm;
-//
+//点云线程锁
 std::mutex mtx_cloud;
+//是否显示点云
 #define VIEWER
 #ifdef VIEWER
 boost::shared_ptr<PCLVisualizer> 	cloud_viewer_(new PCLVisualizer ("zx Cloud"));
@@ -181,20 +177,23 @@ void analysisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr inputcloud,
 }
 
 #ifdef TOYOTA
+//深度图callback
 void callback(const depth_image_utils::HeightMapConstPtr& height_msg){
 	qheightmap_.Push(height_msg);
 	if(qheightmap_.Size()>1){
 		qheightmap_.Pop();
 	}
 }
+//惯导callback
 void gpsdatacllbak(const sensor_driver_msgs::GpswithHeadingConstPtr& msg){
 	qgwithhmsgs_.Push(msg);
 	if(qgwithhmsgs_.Size()>10){
 		qgwithhmsgs_.Pop();
 	}
 }
+//整体处理线程
 void process(){
-	while(true){
+	while(ros::ok()){
 		const depth_image_utils::HeightMapConstPtr heightmapmsg=qheightmap_.PopWithTimeout(common::FromSeconds(0.1));
 		if(heightmapmsg==nullptr) continue;
 		double timeheightmap=heightmapmsg->header.stamp.toSec();
@@ -206,6 +205,7 @@ void process(){
 		}
 		cv::Mat heightmat_0 = cv::Mat::zeros(64,870,CV_32F);
 		cv::Mat dismat_0 = cv::Mat::zeros(64,870,CV_32F);
+		//将消息里的深度图取出放入dismat_0
 		for(int i=0;i<64;++i){
 			for(int j =0;j<870;++j){
 				if(abs(heightmapmsg->data[i*870+j]+100)>0.0001){//原始值为-100赋值为0
@@ -213,7 +213,9 @@ void process(){
 				}
 			}
 		}
+		//gridshow_0用于画悬崖和费悬崖区域
 		cv::Mat gridshow_0 = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
+		//justshow 拥有显示
 		cv::Mat justshow = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
 		cv::Mat heightshow = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC1);
 		//最大高度、最小高度、高度差
@@ -280,20 +282,22 @@ void process(){
 		//		}
 
 		//开始检测
-		//		cout<<"========================"<<endl;
+		//车辆中间区域
 		int rightend=(int)38/0.2;
 		int leftend=(int)32/0.2;
+
 		for(int j=0;j<870;j++){
-			int myj;
+			//用于记录第一条有低到高的有效雷达线，用于特殊处理
 			int countlaser=0;
 			for(int i=58;i>15;i--){
-				//			if(j==800){
-				//				cout<<"height is "<<heightmat_0.at<float>(i,j)<<endl;
-				//			}
+				//当前激光雷达点和下一个点的索引
 				int index=i*870+j;
 				int indexnext=(i-1)*870+j;
+				//当前点的距离
 				double dis=(double)dismat_0.at<float>(i,j);
+				//半径
 				double radius=dis*std::cos(pitchrad64[i]*PI/180);
+				//雷达坐标系该点的坐标
 				double originx=radius*costable[j];
 				double originy=radius*sintable[j];
 				double originz=dis*std::sin(pitchrad64[i]*PI/180);
@@ -304,6 +308,7 @@ void process(){
 				//当前线雷达与上一线雷达距离差
 				double diff2=(double)dismat_0.at<float>(i,j)-(double)dismat_0.at<float>(i+1,j);
 				double disnext=(double)dismat_0.at<float>(i-1,j);
+				//跳过无效点并计数
 				int count=0;
 				while(disnext==0&&i>15){
 					count++;
@@ -322,6 +327,7 @@ void process(){
 				//到达3°后break
 				if(i==15) break;
 
+				//下一个点的半径以及雷达坐标系坐标
 				double radiusnext=disnext*std::cos(pitchrad64[63-i+1]*PI/180);
 				double originxnext=radiusnext*costable[j];
 				double originynext=radiusnext*sintable[j];
@@ -336,6 +342,7 @@ void process(){
 				originp<<originx,originy,originz;
 				originpnext<<originxnext,originynext,originznext;
 
+				//将当前点和下一点转换到车体坐标系
 				double x=(T*originp)[0];
 				double y=(T*originp)[1];
 				double z=(T*originp)[2];
@@ -355,7 +362,8 @@ void process(){
 
 
 
-				double radiusvirtual=4.0;//虚拟半径，用于盲区检测
+				//虚拟半径，---主要用于第一条线，用虚拟半径作为上一条线
+				double radiusvirtual=4.0;
 				double originxvirtual=radiusvirtual*costable[j];
 				double originyvirtual=radiusvirtual*sintable[j];
 				double originzvirtual=0;
@@ -370,6 +378,7 @@ void process(){
 				int row=boost::math::round((y+20)/0.2);
 				int colvirtual;
 				int rowvirtual;
+				//只用高度进行判断
 				if(countlaser==1){
 					colvirtual=boost::math::round((xvirtual+35)/0.2);
 					rowvirtual=boost::math::round((yvirtual+20)/0.2);
@@ -384,15 +393,18 @@ void process(){
 					//				第一条线自己给定初始diff2
 					diff2=0.3;
 				}
+
+
+				//下一个点的栅格坐标
 				int colnext=boost::math::round((xnext+35)/0.2);
 				int rownext=boost::math::round((ynext+20)/0.2);
-
-
 				int gridindex=0;
 				unsigned char* ptr=gridshow_0.ptr<unsigned char>(GRIDWH-1-row);
 
 
-				//下面是为了查看从当前点到下一个点之间是否有障碍物，所以延长了一段，水的倒影有可能在后面一点
+				//下面是为了查看从当前点到下一个点之间（在栅格地图上）是否有障碍物
+				//在栅格地图上悬崖的末端在通常高度通常为负值，而水的反射点在栅格地图上通常为正值
+				//目前用的就是下一个点，可以延长一段，水的倒影有可能在后面一点
 				double radiuswater=(disnext)*std::cos(pitchrad64[63-i+1]*PI/180);
 				double xwater=radiuswater*costable[j];
 				double ywater=radiuswater*sintable[j];
@@ -406,41 +418,44 @@ void process(){
 				int colwater=boost::math::round((xwater1+35)/0.2);
 				int rowwater=boost::math::round((ywater1+20)/0.2);
 
+				//正式开始检测特征
+				//当前点在栅格范围内时
 				if(col<GRIDWH&&row<GRIDWH&&col>=0&&row>=0){
-					//				增加不同半径下的不同高度阈值
+					//半径不同设置不同的高度，超过该高度停止检测
+					//经过矫正后的高度可以设置为固定值
 					if(radius<3)break;
 					if(radius<8){if(height>0.3)break;}
 					else if(radius<13){if(height>0.5)break;}
 					else{if(height>0.8)break;}
 					unsigned char* ptrshow=justshow.ptr<unsigned char>(GRIDWH-1-row);
-					if(col==35/0.2){
-						ptrshow[3*col]=255;
-						ptrshow[3*col+1]=255;
-						ptrshow[3*col+2]=255;
-					}
+					//					if(col==35/0.2){
+					//						ptrshow[3*col]=255;
+					//						ptrshow[3*col+1]=255;
+					//						ptrshow[3*col+2]=255;
+					//					}
 
 					//				针对远距离误检不同阈值
 					if(1){
 						//短距离用高度差和距离突变来定义
 						if(radius<10){
+							//可以增加动态阈值
 							int thresh=6;
 							if(col>155&&col<195) thresh=15;
+							//高度差大于0.5m，并且距离差之比大于阈值
 							if(heightnext-height<-0.5&&diff1/diff2>thresh){//
-
-								//					if((height-heightnext)/(radiusnext-radius)>0.1&&diff1/diff2>3){
+								//把当前这个点标红125，代表候选悬崖的边缘
 								ptr[3*col]=0;
 								ptr[3*col+1]=0;
-								ptr[3*col+2]=255;
+								ptr[3*col+2]=125;
 								//							cout<<radius<<"==================>"<<diff1/diff2<<endl;
-								//排除径向距离比较小的
+								//排除尺寸比较小的，通常悬崖都会比较大
 								if((colnext-col)*(colnext-col)*0.04+(rownext-row)*(rownext-row)*0.04<1){
 #ifdef showgreen
+									//绿色150代表非悬崖
 									cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,150,0));
 #endif
 									continue;
 								}
-								//连线
-								//							if(colnext<GRIDWH&&rownext<GRIDWH&&colnext>=0&&rownext>=0){
 #ifdef lineiter
 								cv::LineIterator it(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext));
 								it++;
@@ -503,25 +518,15 @@ void process(){
 									continue;
 								}
 #endif
-								//								vector<double> temp;
-								//								temp.clear();
-								//								for(int i=-1;i<2;++i){
-								//									for(int j=-1;j<2;++j){
-								////										cout<<rownext<<"  "<<colnext<<endl;
-								//										if(rownext+i<351&&colnext+j<351){
-								//											temp.push_back(heightgridmax_0.at<float>(rownext+i,colnext+j));
-								//										}
-								//									}
-								//								}
-								//								sort(temp.begin(),temp.end());
-								//								if(temp.size()==0)continue;
+								//排除水的误检
+								//遍历当前到下一点之间有无较高的障碍物
 								cv::LineIterator it(heightgridmax_0,cvPoint(col,GRIDWH-1-row),cvPoint(colwater,GRIDWH-1-rowwater));
-								//								cout<<"the heights are......"<<endl;
 								double hm=-100;
 								for(int k=0;k<it.count;++k,it++){
 									int x=it.pos().x;
 									int y=it.pos().y;
 									y=GRIDWH-1-y;
+									//不止遍历一个栅格，遍历每个该条线附近的多个栅格
 									for(int i=-5;i<6;++i){
 										for(int j=-5;j<6;++j){
 											double height=0;
@@ -533,35 +538,34 @@ void process(){
 										}
 									}
 								}
-								//								cout<<hm<<endl;
-								if(hm<0.4){//temp[temp.size()-1]<1&&temp[temp.size()-1]!=-100
-									//									cout<<"the height is "<<temp[temp.size()-1]<<endl;
-									//									cout<<hm<<endl;
-									//									cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colwater,GRIDWH-1-rowwater),cvScalar(0,125,125));
-									cv::line(justshow,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,0,125));
+								//从当前点到下一点栅格地图上没有较高障碍物的话，
+								//认为不是由水造成的误检，则认为是悬崖区域
+								//将收尾标红125，代表悬崖区域
+								//todo：可以缩短距离，防止范围过大误伤非悬崖区域
+								if(hm<0.4){
 									cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,0,125));
 								}
-								//							}
-
 							}
-							else{
+							//如果不满足阈值条件则标绿150
+							else{//对应的为条件：heightnext-height<-0.5&&diff1/diff2>thresh
 #ifdef showgreen
 								cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,150,0));
 #endif
 							}
 						}
-						//大于10m小于17m需要加上颠簸程度、俯仰角、（起始点高度？--这个还不太确定）、正切值、最小高度、距离突变比
-						//tmpmsg->pitch<5
+						//对于10m之外的设置不同阈值
 						else if(radius<30){
 							int thresh=5;
+							//这里指对于路中间的区域，是否阈值过大呢？待检测
 							if(col>155&&col<195) thresh=15;
 							if(1){//&&height>-0.4 &&yprdiff<7
 								//					if((heightmat_0.at<float>(i-1,j)-heightmat_0.at<float>(i,j))<-1&&diff1/diff2>3){
 								if((height-heightnext)/(radiusnext-radius)>0.07
 										&&heightnext-height<-1&&diff1/diff2>thresh){//
+									//可能的边缘点
 									ptr[3*col]=0;
 									ptr[3*col+1]=0;
-									ptr[3*col+2]=255;
+									ptr[3*col+2]=125;
 
 									//排除径向距离比较小的
 									if((colnext-col)*(colnext-col)*0.04+(rownext-row)*(rownext-row)*0.04<1){
@@ -570,8 +574,7 @@ void process(){
 #endif
 										continue;
 									}
-									//连线
-									//								if(colnext<GRIDWH&&rownext<GRIDWH&&colnext>=0&&rownext>=0){
+
 #ifdef lineiter
 									cv::LineIterator it(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext));
 									it++;
@@ -634,18 +637,7 @@ void process(){
 										continue;
 									}
 #endif
-									//									vector<double> temp;
-									//									temp.clear();
-									//									for(int i=-1;i<2;++i){
-									//										for(int j=-1;j<2;++j){
-									////											cout<<rownext<<"  "<<colnext<<endl;
-									//											if(rownext+i<351&&colnext+j<351){
-									//												temp.push_back(heightgridmax_0.at<float>(rownext+i,colnext+j));
-									//											}
-									//										}
-									//									}
-									//									if(temp.size()==0)continue;
-									//									sort(temp.begin(),temp.end());
+
 									cv::LineIterator it(heightgridmax_0,cvPoint(col,GRIDWH-1-row),cvPoint(colwater,GRIDWH-1-rowwater));
 									//								cout<<"the heights are......"<<endl;
 									double hm=-100;
@@ -663,20 +655,12 @@ void process(){
 												if(height>hm) hm=height;
 											}
 										}
-										//									if(height!=(-100)&&height!=0){
-										//										cout<<height<<" ";
-										//									}
 									}
 									//									cout<<hm<<endl;
-									if(hm<0.4){//temp[temp.size()-1]<1&&temp[temp.size()-1]!=-100
-										//										cout<<"the height is "<<temp[temp.size()-1]<<endl;
-
-										//										cout<<hm<<endl;
-										//										cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colwater,GRIDWH-1-rowwater),cvScalar(0,125,125));
+									if(hm<0.4){
 										cv::line(justshow,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,0,125));
 										cv::line(gridshow_0,cvPoint(col,GRIDWH-1-row),cvPoint(colnext,GRIDWH-1-rownext),cvScalar(0,0,125));
 									}
-									//								}
 
 								}
 								else{
@@ -691,10 +675,13 @@ void process(){
 
 
 				//把水的可疑区域画出来
+				//这里找的水区域是只在近距离内丢失点比较多的区域，
+				//这要求激光雷达点比较密集，目前只在64线效果比较好
 				cv::LineIterator it(heightgridmax_0,cvPoint(col,GRIDWH-1-row),cvPoint(colwater,GRIDWH-1-rowwater));
-				//								cout<<"the heights are......"<<endl;
+				//count是只在循环开始时跳过的不处理的点数，如果跳过比较多的话就标记出来
 				if(count>2){
 					double hm=-100;
+					//这里也需要遍历排除水的倒影
 					for(int k=0;k<it.count;++k,it++){
 						int x=it.pos().x;
 						int y=it.pos().y;
@@ -717,7 +704,6 @@ void process(){
 
 					}
 				}
-				////把水的可疑区域画出来
 			}
 		}
 
@@ -731,6 +717,8 @@ void process(){
 		msg_send.resolution=0.2;
 		msg_send.vehicle_x=100;
 		msg_send.vehicle_y=100;
+		//用于将之前用颜色标识的悬崖区域转换为单通道的黑白图像
+		//用于膨胀腐蚀
 		cv::Mat gridall = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC1);
 		for(int row=0;row<GRIDWH;row++){
 			unsigned char* ptrall=gridall.ptr<unsigned char>(GRIDWH-1-row);
@@ -747,31 +735,39 @@ void process(){
 				}
 			}
 		}
+		//膨胀腐蚀，消除单独的误检
 		cv::dilate(gridall,gridall,elementdil);
 		cv::erode(gridall,gridall,elementero);
-		//send
+		//将70*70的栅格地图投影到40*70
 		int max_cnt=-10;
 		for(int row=0;row<351;row++){
 			unsigned char* ptr=gridall.ptr<unsigned char>(GRIDWH-1-row);
 			for(int col=0;col<201;col++){
 				int index=row*201+col;
 				if(ptr[col+75]==255){
+					//5代表悬崖
 					msg_send.data.push_back(5);
 				}
 				else if(ptr[col+75]==200){
 					if(send_water){
-						msg_send.data.push_back(6);}
+						//6代表水
+						msg_send.data.push_back(6);
+					}
 					else{
+						//未知
 						msg_send.data.push_back(0);
 					}
 				}
 				else if(ptr[col+75]==100){
+					//1为非悬崖和非水
 					msg_send.data.push_back(1);
 				}
 				else{
+					//未知
 					msg_send.data.push_back(0);
 				}
 
+				//如果车前有比较多的水的话发送一个标识
 				if(col>75&&col<125&&row>100&&row<175){//车身两侧五米车前十五米看有没有水，
 					int count=0;
 					for(int windowi=0;windowi<10&&windowi+row<351;++windowi){
@@ -793,7 +789,7 @@ void process(){
 		}else{
 			msg_send.havewater=0;
 		}
-		//		cout<<"water max_cnt is ==================== "<<max_cnt<<endl;
+		//发送消息
 		pubStiffwaterOgm.publish(msg_send);
 		if(visual_on){
 			cv::imshow("show",gridall);
@@ -805,7 +801,7 @@ void process(){
 }
 #endif
 
-
+//接收消息，是否发送水检测结果
 void sendcallback(const lanelet_map_msgs::Way msg){
 	if(msg.open_water_det==1){
 		send_water=true;
@@ -817,6 +813,7 @@ void coordinate_from_vehicle_to_velodyne(float x, float y , float z, float& newx
 	newx = x;
 	newy = y;
 }
+//点云显示
 void prepare_viewer()
 {
 #ifdef VIEWER
@@ -946,6 +943,7 @@ int main(int argc, char** argv)
 
 	ros::param::get("~visulization",visual_on);
 	visual_on = true;
+	//将360度分成870份作为每个经过下采样的激光点的横向角度
 	for(int j=0;j<870;j++){
 		double angle=(j*360.0/870);
 		sintable[j]=std::sin(angle*PI/180);
@@ -957,9 +955,8 @@ int main(int argc, char** argv)
 
 	pubStiffwaterOgm=nh.advertise<stiff_msgs::stiffwater> ("stiffwaterogm",20);
 #ifdef TOYOTA
+	//雷达到车辆坐标系的姿态角
 	double zangle = 0,yangle =0.3288*PI/180,xangle = -2.6254*PI/180;//0
-	//		double zangle = -88.4676*PI/180,yangle =-3.2*PI/180,xangle =-1*PI/180;//my
-	//EulerAngles to RotationMatrix
 	::Eigen::Vector3d ea0(zangle,yangle,xangle);
 
 	::Eigen::Matrix3d R;
@@ -971,9 +968,7 @@ int main(int argc, char** argv)
 
 	T.rotate ( R );                                        // 按照rotation_vector进行旋转
 	T.pretranslate ( Eigen::Vector3d (0,1, 2.14) );
-	if(visual_on){
-		ros::Subscriber subLaserCloudFullRes_ = nh.subscribe("lidar_cloud_calibrated", 1,lidar_handler);
-	}
+
 	ros::Subscriber subHeightMap = nh.subscribe("lidar_height_map",1,callback);
 	ros::Subscriber subwatersend = nh.subscribe("topology_global_path",1,sendcallback);
 	//	ros::Subscriber subGpsdata=nh.subscribe("gpsdata",10,gpsdatacllbak);

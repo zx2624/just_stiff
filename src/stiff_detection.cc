@@ -121,7 +121,7 @@ void StiffDetection::process(){
 			//利用16线进行检测
 			Detection16(outputclouds, grid_show, q);
 			//利用32线进行检测
-			Detection32(outputclouds, grid_show, q);
+//			Detection32(outputclouds, grid_show, q);
 			double t_end = ros::Time::now().toSec();
 //			std::cout << "@stiff_detection: time cost --- " << (t_end - t_begin) * 1000 << "ms" << std::endl;
 			//发送消息
@@ -132,7 +132,7 @@ void StiffDetection::process(){
 				cv::waitKey(3);
 			}
 #ifdef CLOUDVIEWER
-			//点云显示
+
 			ShowCloud(cloud_viewer_, tempcloud);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
@@ -198,6 +198,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	float far_bound = FAR_BOUND;
 	const int layer = 16;
 	int round = min(outputclouds[1]->points.size() / layer, outputclouds[2]->points.size() / layer);
+
 	for(int j = 0; j < 16; ++j){
 		for(int i = 0; i + window_big_ < round - 20; ){
 
@@ -251,6 +252,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					dis_av_high /= count;
 					count = 0;
 				}
+
 				//小窗口-后
 				vector<float> ys_in_window;
 				for(int window_i = k + window_small_; window_i < k + 2 * window_small_; window_i++){
@@ -300,8 +302,9 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					i_begin = k;
 				}
 			}
-			//如果存在两个小窗口满足高度差要求的话
+		//如果存在两个小窗口满足高度差要求的话
 			if(i_begin != 0){
+
 				float z_diff_nb = 0;
 				int index_high = -1, index_low = -1;
 				//找到两个小窗口间相邻的两个有效点，想利用这两个点的信息做些工作
@@ -352,7 +355,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 //				if(dis_high < 10)
 //					offset = 0;
 				//利用距离突变和正切值作为阈值进行筛选
-				if(((dis_ratio < th_dis + offset&& dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th_tan_16)
+				if(((dis_ratio < th_dis + offset&& dis_ratio > 0.2) && z0 < th_z0 && z1 < th_z1 && tangent > th_tan_16)
 				){// || (dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
 					//						std::cout << "tanget is ... " << tangent << std::endl;
 //					std::cout  << z1 <<  "  ... " <<  z0 << std::endl;
@@ -428,7 +431,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 			x0 = 0; y0 = 0; x1 = 0; y1 = 0; z0 = 0; z1 = 0;
 			i_begin = 0;
 			dis_ratio = 0;
-			//大窗口循环 --
+			//大窗口循环 -- 右侧雷达
 			for(int k = i; k + window_small_ < i + window_big_; ++k){
 				//height_diff_most 大窗口内两个小窗口间最大平均高度差
 				//x0，y0，x1，y1，z0，z1 高低小窗口内点云的平均坐标
@@ -465,6 +468,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					dis_av_high /= count;
 					count = 0;
 				}
+				if(y_high > 0)
+					std::cout << "yh " << y_high << "  ";
 				//小窗口-远处
 				for(int window_i = k; window_i < k + window_small_; window_i++){
 					int index = window_i * layer + j;
@@ -472,6 +477,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float  x = outputclouds[2]->points[index].x;
 					float  y = outputclouds[2]->points[index].y;
 					float dis = sqrt(x*x + y*y + z*z);
+					if(y_high > 0)
+						std::cout << y << " ";
 					if(!ptUseful(outputclouds[2]->points[index], far_bound)) continue;
 					Eigen::Vector3d pt(x, y, z);
 					pt = q * pt;
@@ -485,13 +492,16 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					y_low += y;
 					x_low += x;
 				}
+				if(y_high > 0)
+				std::cout << std::endl;
 				if(count > 0) {
 					z_low = z_low / count;
 					y_low = y_low / count;
 					x_low = x_low / count;
 					dis_av_low /= count;
 				}
-
+				if(y_high > 0)
+					std::cout << y_low << std::endl;
 				float height_diff = 0;
 				if(abs(z_high) > 0.0001 && abs(z_low) > 0.0001){
 					height_diff =  z_low - z_high;
@@ -557,9 +567,10 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 //						ok = true;
 //				}
 				float offset = 0;
+
 //				if(dis_high < 10)
 //					offset = 0;
-				if(((dis_ratio < th_dis + offset && dis_ratio > 0.2) && z0 < 0.5 && z1 < -0.5 && tangent > th_tan_16)
+				if(((dis_ratio < th_dis + offset && dis_ratio > 0.2) && z0 < th_z0 && z1 < th_z1 && tangent > th_tan_16)
 				){//(dis_tocheck < 15 && z_diff_nb > 1 && z0 < 0.5 && tangent > 0.15)
 					//					std::cout << "tangent ... " << tangent << std::endl;
 //					std::cout  << z1 <<  "  ... " <<  z0 << std::endl;
