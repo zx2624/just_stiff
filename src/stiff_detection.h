@@ -128,8 +128,8 @@ private:
 	int window_big_ = 20;	/**< 大窗口的点云数量 */
 	int window_small_ = 5;	/**< 小窗口的点云数量 */
 	float th_dis = 0.65;	/**< 距离突变阈值 */
-	float th_tan_16 = 0.18;	/**< 16线正切阈值 */
-	float th_tan_32 = 0.15;	/**< 32线正切阈值 */
+	float th_tan_16 = 0.166;	/**< 16线正切阈值 */
+	float th_tan_32 = 0.113;	/**< 32线正切阈值 */
 	float th_height = -0.6;	/**< 高度阈值 */
 	float th_z0 = 0.5;	/**< 障碍物过滤阈值 */
 	float th_z1 = -0.5;	/**< 悬崖最低高度阈值 */

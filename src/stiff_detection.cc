@@ -468,8 +468,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					dis_av_high /= count;
 					count = 0;
 				}
-				if(y_high > 0)
-					std::cout << "yh " << y_high << "  ";
 				//小窗口-远处
 				for(int window_i = k; window_i < k + window_small_; window_i++){
 					int index = window_i * layer + j;
@@ -477,8 +475,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float  x = outputclouds[2]->points[index].x;
 					float  y = outputclouds[2]->points[index].y;
 					float dis = sqrt(x*x + y*y + z*z);
-					if(y_high > 0)
-						std::cout << y << " ";
 					if(!ptUseful(outputclouds[2]->points[index], far_bound)) continue;
 					Eigen::Vector3d pt(x, y, z);
 					pt = q * pt;
@@ -492,16 +488,12 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					y_low += y;
 					x_low += x;
 				}
-				if(y_high > 0)
-				std::cout << std::endl;
 				if(count > 0) {
 					z_low = z_low / count;
 					y_low = y_low / count;
 					x_low = x_low / count;
 					dis_av_low /= count;
 				}
-				if(y_high > 0)
-					std::cout << y_low << std::endl;
 				float height_diff = 0;
 				if(abs(z_high) > 0.0001 && abs(z_low) > 0.0001){
 					height_diff =  z_low - z_high;
