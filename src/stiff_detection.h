@@ -103,9 +103,10 @@ public:
 			config.th_dis,
 			config.th_tan_16,
 			config.th_tan_32,
+			config.th_height,
 			config.th_z0,
-			config.th_z1,
-			config.th_height);
+			config.th_z1
+			);
 		th_dis  = config.th_dis;
 		th_tan_16 = config.th_tan_16;
 		th_tan_32 = config.th_tan_32;
