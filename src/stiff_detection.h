@@ -19,6 +19,16 @@
 #include "stiff_detection/stiff_dy_paramConfig.h"
 #include <dynamic_reconfigure/server.h>
 
+//For plane segmentation
+#include <pcl/ModelCoefficients.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/extract_indices.h>
+
 #define PI 3.141592653
 #define CLOUDVIEWER //点云可视化
 #define GRIDWH 351
@@ -89,10 +99,17 @@ public:
 	 * \brief 点云显示程序
 	 */
 	void ShowCloud(boost::shared_ptr<PCLVisualizer>& cloud_viewer, pcl::PointCloud<pcl::PointXYZI>::Ptr inputcloud);
+	void showClouds(boost::shared_ptr<PCLVisualizer>& cloud_viewer,
+			vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> inputcloud);
 	/*!
 	 * \brief 判断检测悬崖时用的激光雷达点是否有效。
 	 */
 	bool ptUseful(pcl::PointXYZI& pt, float dis_th);
+	/*!
+	 * \brief 垂直墙检测
+	 */
+	void verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_in,
+			vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& cloud_out);
 	void pub1();
 	void pub2();
 	void dyCallback(stiff_detection::stiff_dy_paramConfig &config, uint32_t level)
@@ -141,6 +158,7 @@ private:
 #ifdef CLOUDVIEWER
 	pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_;
+	pcl::PointCloud<pcl::PointXYZI>::Ptr vertical_roi_cloud_;	/**< 用于垂直墙检测的点云 */
 #endif //CLOUDVIEWER
 
 
