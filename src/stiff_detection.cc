@@ -966,7 +966,7 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 	seg.setModelType (pcl::SACMODEL_PLANE);
 	seg.setMethodType (pcl::SAC_RANSAC);
 	seg.setMaxIterations (1000);
-	seg.setDistanceThreshold (0.10);
+	seg.setDistanceThreshold (0.03);
 
 	// Create the filtering object
 	pcl::ExtractIndices<pcl::PointXYZI> extract;
@@ -977,7 +977,7 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 
 	// While 30% of the original cloud is still there
 //	while (cloud_in->points.size () > 0.3 * nr_points)
-	//这里可以加一个for循环
+	//TODO:这里可以加一个for循环
 	if(1)
 	{
 
@@ -1009,7 +1009,7 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 		extract.setNegative (true);
 		extract.filter (*cloud_f);
 		cloud_in.swap (cloud_f);
-		if(abs(abc.z()) < 0.1){//
+		if(1){//abs(abc.z()) < 0.1
 			std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << std::endl;
 			cloud_out.push_back(cloud_p);
 		}else if(abs(abc.z()) > 0.9){
