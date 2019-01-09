@@ -97,7 +97,11 @@ void StiffDetection::process(){
 			std::vector<pcl::PointXYZI> lidarpropertys;//每一个PointType类型都表示一个单独点
 			analysisCloud(tempcloud,outputclouds,lidarpropertys);
 			//将点云投影到栅格地图显示，并将有点云的栅格标记为非悬崖区域。
+			vertical_roi_cloud_->clear();
 			for(auto pt : tempcloud->points){
+				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.3){
+					vertical_roi_cloud_->points.push_back(pt);
+				}
 				if(pt.range < 0) continue;
 				float x = pt.x;
 				float y = pt.y;
@@ -119,7 +123,6 @@ void StiffDetection::process(){
 			high_cloud_->clear();
 			low_cloud_->clear();
 #endif //CLOUDVIEWER
-			vertical_roi_cloud_->clear();
 			//利用16线进行检测
 			Detection16(outputclouds, grid_show, q);
 			//利用32线进行检测
@@ -142,6 +145,7 @@ void StiffDetection::process(){
 				showClouds(cloud_viewer_, clouds);
 				//				ShowCloud(cloud_viewer_, clouds[0]);
 			}
+//			ShowCloud(cloud_viewer_, vertical_roi_cloud_);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
@@ -210,15 +214,15 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	for(int j = 0; j < 16; ++j){
 		for(int i = 0; i + window_big_ < round - 20; ){
 			//将垂直墙检测感兴趣区域放入vertical_roi_cloud_,后续进行检测
-			int index_ver = i * layer + j;
-			auto pt_ver1 = outputclouds[1]->points[index_ver];
-			if(ptUseful(pt_ver1, 30) && pt_ver1.azimuth > 45 && pt_ver1.azimuth < 135){
-				vertical_roi_cloud_->points.push_back(pt_ver1);
-			}
-			auto pt_ver2 = outputclouds[2]->points[index_ver];
-			if(ptUseful(pt_ver2, 30) && pt_ver2.azimuth > 45 && pt_ver2.azimuth < 135){
-				vertical_roi_cloud_->points.push_back(pt_ver2);
-			}
+//			int index_ver = i * layer + j;
+//			auto pt_ver1 = outputclouds[1]->points[index_ver];
+//			if(ptUseful(pt_ver1, 30) && pt_ver1.azimuth > 45 && pt_ver1.azimuth < 135){
+//				vertical_roi_cloud_->points.push_back(pt_ver1);
+//			}
+//			auto pt_ver2 = outputclouds[2]->points[index_ver];
+//			if(ptUseful(pt_ver2, 30) && pt_ver2.azimuth > 45 && pt_ver2.azimuth < 135){
+//				vertical_roi_cloud_->points.push_back(pt_ver2);
+//			}
 			//height_diff_most 大窗口内两个小窗口间最大平均高度差
 			//x0，y0，x1，y1，z0，z1 高低小窗口内点云的平均坐标
 			float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
@@ -664,11 +668,11 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	for(int j = 0; j < 25; ++j){
 		for(int i = 0; i + window_big_ < round32 - 100; i+=window_small_){
 
-			int index_ver0 = i * 32 + j;
-			auto pt_ver0 = outputclouds[0]->points[index_ver0];
-			if(ptUseful(pt_ver0, 30) && pt_ver0.azimuth > 45 && pt_ver0.azimuth < 135){
-				vertical_roi_cloud_->points.push_back(pt_ver0);
-			}
+//			int index_ver0 = i * 32 + j;
+//			auto pt_ver0 = outputclouds[0]->points[index_ver0];
+//			if(ptUseful(pt_ver0, 30) && pt_ver0.azimuth > 45 && pt_ver0.azimuth < 135){
+//				vertical_roi_cloud_->points.push_back(pt_ver0);
+//			}
 			//			std::cout << "=== " << i << std::endl;
 
 
@@ -930,7 +934,6 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 		vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& cloud_out){
 	pcl::PCLPointCloud2::Ptr cloud_blob (new pcl::PCLPointCloud2), cloud_filtered_blob (new pcl::PCLPointCloud2);
 	pcl::PointCloud<pcl::PointXYZI>::Ptr  cloud_p (new pcl::PointCloud<pcl::PointXYZI>), cloud_f (new pcl::PointCloud<pcl::PointXYZI>);
-
 	//	// Fill in the cloud data
 	//	pcl::PCDReader reader;
 	//	reader.read ("table_scene_lms400.pcd", *cloud_blob);
@@ -969,9 +972,15 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 	pcl::ExtractIndices<pcl::PointXYZI> extract;
 
 	int i = 0, nr_points = (int) cloud_in->points.size ();
+//	-0.00775922  -0.99996  -0.00453188
+//	-0.00860226  -0.999912  0.0100643
+
 	// While 30% of the original cloud is still there
-	while (cloud_in->points.size () > 0.3 * nr_points)
+//	while (cloud_in->points.size () > 0.3 * nr_points)
+	//这里可以加一个for循环
+	if(1)
 	{
+
 		std::chrono::steady_clock::time_point  now = std::chrono::steady_clock::now();
 
 		// Segment the largest planar component from the remaining cloud
@@ -980,7 +989,7 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 		if (inliers->indices.size () == 0)
 		{
 			std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
-			break;
+			//break;
 		}
 
 		// Extract the inliers
@@ -988,14 +997,11 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 		extract.setIndices (inliers);
 		extract.setNegative (false);
 		extract.filter (*cloud_p);
-		std::cerr << "PointCloud representing the planar component: " << cloud_p->width * cloud_p->height << " data points." << std::endl;
+//		std::cerr << "PointCloud representing the planar component: " << cloud_p->width * cloud_p->height << " data points." << std::endl;
 		Eigen::Vector3d abc(coefficients->values[0],coefficients->values[1],coefficients->values[2]);
 		abc.normalize();
 
-		if(abs(abc.z()) < 0.3){
-			std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << std::endl;
-			cloud_out.push_back(cloud_p);
-		}
+
 		std::stringstream ss;
 		//		writer.write<pcl::PointXYZ> (ss.str (), *cloud_p, false);
 
@@ -1003,6 +1009,12 @@ void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr clo
 		extract.setNegative (true);
 		extract.filter (*cloud_f);
 		cloud_in.swap (cloud_f);
+		if(abs(abc.z()) < 0.1){//
+			std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << std::endl;
+			cloud_out.push_back(cloud_p);
+		}else if(abs(abc.z()) > 0.9){
+
+		}
 		i++;
 		auto t2 = std::chrono::steady_clock::now();
 		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - now);
@@ -1102,7 +1114,7 @@ void StiffDetection::showClouds(boost::shared_ptr<PCLVisualizer>& cloud_viewer_,
 	for(int i = 0; i < incloud.size(); ++i){
 		if (incloud[i]->size() > 0)
 		{
-			pcl::visualization::PointCloudColorHandlerRandom<pcl::PointXYZI> cloudHandler( incloud[i] );
+			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( incloud[i],255,0,0 );
 			if (!cloud_viewer_->updatePointCloud(incloud[i],cloudHandler, std::to_string(i)))
 			{
 				cloud_viewer_->addPointCloud(incloud[i], cloudHandler, std::to_string(i));
