@@ -8,6 +8,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <pcl/keypoints/uniform_sampling.h>
+
 #include <opencv2/core/core.hpp>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <boost/shared_ptr.hpp>
@@ -29,8 +31,10 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/extract_indices.h>
 
+
 #define PI 3.141592653
-#define CLOUDVIEWER //点云可视化
+//#define CLOUDVIEWER //悬崖检测可视化点云可视化
+#define CLOUDVIEWER_VER
 #define GRIDWH 351
 #define FAR_BOUND 45 //可用的远处点云范围
 #define NEAR_BOUND 45 //可用的近处点云范围
@@ -108,8 +112,7 @@ public:
 	/*!
 	 * \brief 垂直墙检测
 	 */
-	void verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_in,
-			vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& cloud_out);
+	void verticalWallDetect();
 	void pub1();
 	void pub2();
 	void dyCallback(stiff_detection::stiff_dy_paramConfig &config, uint32_t level)
@@ -158,12 +161,14 @@ private:
 #ifdef CLOUDVIEWER
 	pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_;
-	pcl::PointCloud<pcl::PointXYZI>::Ptr vertical_roi_cloud_;	/**< 用于垂直墙检测的点云 */
 #endif //CLOUDVIEWER
+	pcl::PointCloud<pcl::PointXYZI>::Ptr vertical_roi_cloud_;	/**< 用于垂直墙检测的点云 */
 
 
 	std::thread* process_thread_;	/**< process函数线程 */
 	std::mutex mtx_lidar_;	/**< 为lidarCloudMsgs_加锁 */
+	std::thread* verwall_thread_;
+	std::mutex mtx_verwall_;
 };
 
 

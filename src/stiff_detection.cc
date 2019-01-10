@@ -1,11 +1,12 @@
 #include "stiff_detection.h"
 
 StiffDetection::StiffDetection(ros::NodeHandle& nh):nh_(nh)
+,vertical_roi_cloud_(new pcl::PointCloud<pcl::PointXYZI>)
 #ifdef CLOUDVIEWER
 ,high_cloud_ ( new pcl::PointCloud<pcl::PointXYZI>),
-low_cloud_ (new pcl::PointCloud<pcl::PointXYZI>),
-vertical_roi_cloud_(new pcl::PointCloud<pcl::PointXYZI>)
+low_cloud_ (new pcl::PointCloud<pcl::PointXYZI>)
 #endif //CLOUDVIEWER
+
 {
 	ros::param::get("~visulization",visual_on);
 	if(visual_on)
@@ -19,6 +20,8 @@ vertical_roi_cloud_(new pcl::PointCloud<pcl::PointXYZI>)
 	pub_Stiff_ = nh_.advertise<stiff_msgs::stiffwater> ("stiffwaterogm",20);
 	//开process线程
 	process_thread_ = new std::thread(&StiffDetection::process, this);
+	//开垂直墙检测线程
+	verwall_thread_ = new std::thread(&StiffDetection::verticalWallDetect, this);
 	//雷达线束序号的索引的映射
 	map_j = new int[32]{
 		16,	18,	0,	20,	2,	22,	30,	28,	26,	24,	23,	21,	19,	17,	31,	29,	27,	25,	7,	5,	3,	1,	15,	13,	11,	9,	4,	6,	8,	10,	12,	14
@@ -88,7 +91,6 @@ void StiffDetection::process(){
 		Eigen::Quaterniond q(R);//q代表矫正为水平面的旋转
 		cv::Mat grid_msg_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC1);
 		cv::Mat grid_show = cv::Mat::zeros(GRIDWH,GRIDWH,CV_8UC3);
-		double t1 = ros::Time::now().toSec();
 		if(lidarCloudMsgs_){
 			pcl::PointCloud<pcl::PointXYZI>::Ptr tempcloud(new pcl::PointCloud<pcl::PointXYZI>);//当前帧点云（雷达里程计坐标系）
 			if(lidarCloudMsgs_ != nullptr)
@@ -96,8 +98,9 @@ void StiffDetection::process(){
 			std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds;//多个激光雷达数据包，向量中每个元素为一个激光雷达一帧数据
 			std::vector<pcl::PointXYZI> lidarpropertys;//每一个PointType类型都表示一个单独点
 			analysisCloud(tempcloud,outputclouds,lidarpropertys);
-			//将点云投影到栅格地图显示，并将有点云的栅格标记为非悬崖区域。
+			//将点云投影到栅格地图显示，并将有点云的栅格标记为非悬崖区域。耗时3ms左右
 			vertical_roi_cloud_->clear();
+			mtx_verwall_.lock();
 			for(auto pt : tempcloud->points){
 				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.3){
 					vertical_roi_cloud_->points.push_back(pt);
@@ -118,7 +121,7 @@ void StiffDetection::process(){
 					ptr[3*col + 1] = 255;
 				}
 			}
-			double t_begin = ros::Time::now().toSec();
+			mtx_verwall_.unlock();
 #ifdef CLOUDVIEWER
 			high_cloud_->clear();
 			low_cloud_->clear();
@@ -128,9 +131,21 @@ void StiffDetection::process(){
 			//利用32线进行检测
 			Detection32(outputclouds, grid_show, q);
 			double t_end = ros::Time::now().toSec();
-			vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> clouds;
-			verticalWallDetect(vertical_roi_cloud_, clouds);
 			//			std::cout << "@stiff_detection: time cost --- " << (t_end - t_begin) * 1000 << "ms" << std::endl;
+
+			vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> clouds;
+			double t1 = ros::Time::now().toSec();
+			//下采样。耗时2ms左右
+//			pcl::UniformSampling<pcl::PointXYZI> filter;
+//			filter.setInputCloud(vertical_roi_cloud_);
+//			filter.setRadiusSearch(0.2f);
+//			pcl::PointCloud<int> keypointIndices;
+//			filter.compute(keypointIndices);
+//			pcl::copyPointCloud(*vertical_roi_cloud_, keypointIndices.points, *vertical_roi_cloud_);
+//			double t2 = ros::Time::now().toSec();
+//			std::cout << "time cost " << t2 - t1 << std::endl;
+
+
 			//发送消息
 			PublishMsg(grid_show, grid_msg_show, lidarCloudMsgs_->header.stamp);
 			if(visual_on){
@@ -140,19 +155,22 @@ void StiffDetection::process(){
 			}
 #ifdef CLOUDVIEWER
 			//			std::cout << "@stiff_detection: the size is  " << vertical_roi_cloud_->size() << std::endl;
-			if(clouds.size() > 0){
+			if(clouds.size() > 0){//
 				std::cout << "clouds size is " << clouds.size() << std::endl;
 				showClouds(cloud_viewer_, clouds);
 				//				ShowCloud(cloud_viewer_, clouds[0]);
 			}
-//			ShowCloud(cloud_viewer_, vertical_roi_cloud_);
+
+
+			//			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
+			//			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
+			//			ShowCloud(cloud_viewer_, vertical_roi_cloud_);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
 		}
 		//		usleep(30000);
-		double t2 = ros::Time::now().toSec();
-		//		std::cout << "time cost: " << t2 - t1 << std::endl;
+
 	}
 }
 bool StiffDetection::ptUseful(pcl::PointXYZI& pt, float dis_th){
@@ -214,15 +232,15 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	for(int j = 0; j < 16; ++j){
 		for(int i = 0; i + window_big_ < round - 20; ){
 			//将垂直墙检测感兴趣区域放入vertical_roi_cloud_,后续进行检测
-//			int index_ver = i * layer + j;
-//			auto pt_ver1 = outputclouds[1]->points[index_ver];
-//			if(ptUseful(pt_ver1, 30) && pt_ver1.azimuth > 45 && pt_ver1.azimuth < 135){
-//				vertical_roi_cloud_->points.push_back(pt_ver1);
-//			}
-//			auto pt_ver2 = outputclouds[2]->points[index_ver];
-//			if(ptUseful(pt_ver2, 30) && pt_ver2.azimuth > 45 && pt_ver2.azimuth < 135){
-//				vertical_roi_cloud_->points.push_back(pt_ver2);
-//			}
+			//			int index_ver = i * layer + j;
+			//			auto pt_ver1 = outputclouds[1]->points[index_ver];
+			//			if(ptUseful(pt_ver1, 30) && pt_ver1.azimuth > 45 && pt_ver1.azimuth < 135){
+			//				vertical_roi_cloud_->points.push_back(pt_ver1);
+			//			}
+			//			auto pt_ver2 = outputclouds[2]->points[index_ver];
+			//			if(ptUseful(pt_ver2, 30) && pt_ver2.azimuth > 45 && pt_ver2.azimuth < 135){
+			//				vertical_roi_cloud_->points.push_back(pt_ver2);
+			//			}
 			//height_diff_most 大窗口内两个小窗口间最大平均高度差
 			//x0，y0，x1，y1，z0，z1 高低小窗口内点云的平均坐标
 			float  height_diff_most = 10, x0 = 0, y0 = 0, x1 = 0, y1 = 0, z0 = 0, z1 = 0;
@@ -668,11 +686,11 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	for(int j = 0; j < 25; ++j){
 		for(int i = 0; i + window_big_ < round32 - 100; i+=window_small_){
 
-//			int index_ver0 = i * 32 + j;
-//			auto pt_ver0 = outputclouds[0]->points[index_ver0];
-//			if(ptUseful(pt_ver0, 30) && pt_ver0.azimuth > 45 && pt_ver0.azimuth < 135){
-//				vertical_roi_cloud_->points.push_back(pt_ver0);
-//			}
+			//			int index_ver0 = i * 32 + j;
+			//			auto pt_ver0 = outputclouds[0]->points[index_ver0];
+			//			if(ptUseful(pt_ver0, 30) && pt_ver0.azimuth > 45 && pt_ver0.azimuth < 135){
+			//				vertical_roi_cloud_->points.push_back(pt_ver0);
+			//			}
 			//			std::cout << "=== " << i << std::endl;
 
 
@@ -930,95 +948,121 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	}
 	//	std::cout << "222222222" << std::endl;
 }
-void StiffDetection::verticalWallDetect(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_in,
-		vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& cloud_out){
-	pcl::PCLPointCloud2::Ptr cloud_blob (new pcl::PCLPointCloud2), cloud_filtered_blob (new pcl::PCLPointCloud2);
-	pcl::PointCloud<pcl::PointXYZI>::Ptr  cloud_p (new pcl::PointCloud<pcl::PointXYZI>), cloud_f (new pcl::PointCloud<pcl::PointXYZI>);
-	//	// Fill in the cloud data
-	//	pcl::PCDReader reader;
-	//	reader.read ("table_scene_lms400.pcd", *cloud_blob);
-	//
-	//
-	//	std::cerr << "PointCloud before filtering: " << cloud_blob->width * cloud_blob->height << " data points." << std::endl;
-	//
-	//	// Create the filtering object: downsample the dataset using a leaf size of 1cm
-	//	pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-	//	sor.setInputCloud (cloud_blob);
-	//	sor.setLeafSize (0.01f, 0.01f, 0.01f);
-	//	sor.filter (*cloud_filtered_blob);
-	//
-	//	// Convert to the templated PointCloud
-	//	pcl::fromPCLPointCloud2 (*cloud_filtered_blob, *cloud_filtered);
-	//
-	//	std::cerr << "PointCloud after filtering: " << cloud_filtered->width * cloud_filtered->height << " data points." << std::endl;
-	//
-	//	// Write the downsampled version to disk
-	//	pcl::PCDWriter writer;
-	//	writer.write<pcl::PointXYZ> ("table_scene_lms400_downsampled.pcd", *cloud_filtered, false);
-
-	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
-	pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
-	// Create the segmentation object
-	pcl::SACSegmentation<pcl::PointXYZI> seg;
-	// Optional
-	seg.setOptimizeCoefficients (true);
-	// Mandatory
-	seg.setModelType (pcl::SACMODEL_PLANE);
-	seg.setMethodType (pcl::SAC_RANSAC);
-	seg.setMaxIterations (1000);
-	seg.setDistanceThreshold (0.03);
-
-	// Create the filtering object
-	pcl::ExtractIndices<pcl::PointXYZI> extract;
-
-	int i = 0, nr_points = (int) cloud_in->points.size ();
-//	-0.00775922  -0.99996  -0.00453188
-//	-0.00860226  -0.999912  0.0100643
-
-	// While 30% of the original cloud is still there
-//	while (cloud_in->points.size () > 0.3 * nr_points)
-	//TODO:这里可以加一个for循环
-	if(1)
-	{
-
-		std::chrono::steady_clock::time_point  now = std::chrono::steady_clock::now();
-
-		// Segment the largest planar component from the remaining cloud
-		seg.setInputCloud (cloud_in);
-		seg.segment (*inliers, *coefficients);
-		if (inliers->indices.size () == 0)
-		{
-			std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
-			//break;
+void StiffDetection::verticalWallDetect(){
+	pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_out(new pcl::PointCloud<pcl::PointXYZI>);
+	//cloudviewer的初始化必须和显示在同一个线程
+#ifdef CLOUDVIEWER_VER
+	boost::shared_ptr<PCLVisualizer> cloud_viewer_ (new PCLVisualizer("stiffdetection cloud"));
+	PrepareViewer(cloud_viewer_);
+#endif //CLOUDVIEWER
+	while(ros::ok()){
+		pcl::PCLPointCloud2::Ptr cloud_blob (new pcl::PCLPointCloud2), cloud_filtered_blob (new pcl::PCLPointCloud2);
+		pcl::PointCloud<pcl::PointXYZI>::Ptr  cloud_in(new pcl::PointCloud<pcl::PointXYZI>)
+		,cloud_p (new pcl::PointCloud<pcl::PointXYZI>), cloud_f (new pcl::PointCloud<pcl::PointXYZI>);
+		//	// Fill in the cloud data
+		//	pcl::PCDReader reader;
+		//	reader.read ("table_scene_lms400.pcd", *cloud_blob);
+		//
+		//
+		//	std::cerr << "PointCloud before filtering: " << cloud_blob->width * cloud_blob->height << " data points." << std::endl;
+		//
+		//	// Create the filtering object: downsample the dataset using a leaf size of 1cm
+		if(vertical_roi_cloud_->size() == 0){
+			usleep(100000);
+			continue;
 		}
+		cloud_in = vertical_roi_cloud_;
+//		pcl::UniformSampling<pcl::PointXYZI> filter;
+//		filter.setInputCloud(vertical_roi_cloud_);
+//		filter.setRadiusSearch(0.3f);
+//		pcl::PointCloud<int> keypointIndices;
+//		filter.compute(keypointIndices);
+//		pcl::copyPointCloud(*vertical_roi_cloud_, keypointIndices.points, *cloud_in);
+		//		sor.filter (*cloud_filtered_blob);
+		//
+		//	// Convert to the templated PointCloud
+		//	pcl::fromPCLPointCloud2 (*cloud_filtered_blob, *cloud_filtered);
+		//
+		//	std::cerr << "PointCloud after filtering: " << cloud_filtered->width * cloud_filtered->height << " data points." << std::endl;
+		//
+		//	// Write the downsampled version to disk
+		//	pcl::PCDWriter writer;
+		//	writer.write<pcl::PointXYZ> ("table_scene_lms400_downsampled.pcd", *cloud_filtered, false);
 
-		// Extract the inliers
-		extract.setInputCloud (cloud_in);
-		extract.setIndices (inliers);
-		extract.setNegative (false);
-		extract.filter (*cloud_p);
-//		std::cerr << "PointCloud representing the planar component: " << cloud_p->width * cloud_p->height << " data points." << std::endl;
-		Eigen::Vector3d abc(coefficients->values[0],coefficients->values[1],coefficients->values[2]);
-		abc.normalize();
-
-
-		std::stringstream ss;
-		//		writer.write<pcl::PointXYZ> (ss.str (), *cloud_p, false);
+		pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+		pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
+		// Create the segmentation object
+		pcl::SACSegmentation<pcl::PointXYZI> seg;
+		// Optional
+		seg.setOptimizeCoefficients (true);
+		// Mandatory
+		seg.setModelType (pcl::SACMODEL_PLANE);
+		seg.setMethodType (pcl::SAC_RANSAC);
+		seg.setMaxIterations (1000);
+		seg.setDistanceThreshold (0.03);
 
 		// Create the filtering object
-		extract.setNegative (true);
-		extract.filter (*cloud_f);
-		cloud_in.swap (cloud_f);
-		if(1){//abs(abc.z()) < 0.1
-			std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << std::endl;
-			cloud_out.push_back(cloud_p);
-		}else if(abs(abc.z()) > 0.9){
+		pcl::ExtractIndices<pcl::PointXYZI> extract;
 
+		int i = 0;// nr_points = (int) vertical_roi_cloud_->points.size ();
+		//	-0.00775922  -0.99996  -0.00453188
+		//	-0.00860226  -0.999912  0.0100643
+
+		// While 30% of the original cloud is still there
+		cloud_out->clear();
+		while (i < 2) //cloud_in->points.size () > 0.3 * nr_points
+			//TODO:这里可以加一个for循环
+			//	if(1)
+		{
+
+			inliers->indices.clear();
+			if(cloud_in->size() < 10) break;
+			std::chrono::steady_clock::time_point  now = std::chrono::steady_clock::now();
+			// Segment the largest planar component from the remaining cloud
+			seg.setInputCloud (cloud_in);
+			seg.segment (*inliers, *coefficients);
+			if (inliers->indices.size () == 0)
+			{
+				std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
+				break;
+			}
+//			std::cout << "the " << i <<"'s ieration has"<<
+//					cloud_in->size() << "points" << std::endl;
+			// Extract the inliers
+			extract.setInputCloud (cloud_in);
+			extract.setIndices (inliers);
+			extract.setNegative (false);
+			extract.filter (*cloud_p);
+			//		std::cerr << "PointCloud representing the planar component: " << cloud_p->width * cloud_p->height << " data points." << std::endl;
+			Eigen::Vector3d abc(coefficients->values[0],coefficients->values[1],coefficients->values[2]);
+			abc.normalize();
+
+
+			std::stringstream ss;
+			//		writer.write<pcl::PointXYZ> (ss.str (), *cloud_p, false);
+
+			// Create the filtering object
+			extract.setNegative (true);
+			extract.filter (*cloud_f);
+			cloud_in.swap (cloud_f);
+			if(abs(abc.z()) < 0.1){//
+				*cloud_out += *cloud_p;
+				break;
+			}else if(abs(abc.z()) > 0.9){//
+				std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << "  " <<
+				coefficients->values[3]	<< std::endl;
+				*cloud_out += *cloud_p;
+			}
+			i++;
+			auto t2 = std::chrono::steady_clock::now();
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - now);
+//			printf("%f\n",time_span);
 		}
-		i++;
-		auto t2 = std::chrono::steady_clock::now();
-		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - now);
-		//		printf("%f\n",time_span);
+		if(cloud_out->size() > 0){
+			ShowCloud(cloud_viewer_, cloud_out);
+		}
+		cloud_viewer_->spinOnce();
+
 	}
 }
 void StiffDetection::PublishMsg(cv::Mat grid_show, cv::Mat grid_msg_show, ros::Time stamp){
@@ -1111,16 +1155,22 @@ void StiffDetection::ShowCloud(boost::shared_ptr<PCLVisualizer>& cloud_viewer_, 
 void StiffDetection::showClouds(boost::shared_ptr<PCLVisualizer>& cloud_viewer_,
 		vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> incloud){
 	cloud_viewer_->removeAllPointClouds();
-	for(int i = 0; i < incloud.size(); ++i){
-		if (incloud[i]->size() > 0)
+		if (incloud[0]->size() > 0)
 		{
-			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( incloud[i],255,0,0 );
-			if (!cloud_viewer_->updatePointCloud(incloud[i],cloudHandler, std::to_string(i)))
+			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( incloud[0],255,0,0 );
+			if (!cloud_viewer_->updatePointCloud(incloud[0],cloudHandler, "1"))
 			{
-				cloud_viewer_->addPointCloud(incloud[i], cloudHandler, std::to_string(i));
+				cloud_viewer_->addPointCloud(incloud[0], cloudHandler, "1");
 			}
 		}
-	}
+		if (incloud[1]->size() > 0)
+		{
+			pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> cloudHandler( incloud[1],255,255,0 );
+			if (!cloud_viewer_->updatePointCloud(incloud[1],cloudHandler, "2"))
+			{
+				cloud_viewer_->addPointCloud(incloud[1], cloudHandler, "2");
+			}
+		}
 }
 void StiffDetection::analysisCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr inputcloud,
 		std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& outputclouds,std::vector<pcl::PointXYZI>& lidarpropertys)
@@ -1297,4 +1347,118 @@ void StiffDetection::PrepareViewer(boost::shared_ptr<PCLVisualizer>& cloud_viewe
 		}
 	}
 #endif //VIEWER
+#ifdef CLOUDVIEWER_VER
+	cloud_viewer_->addCoordinateSystem (3.0);
+	cloud_viewer_->setBackgroundColor (0, 0, 0);
+	cloud_viewer_->initCameraParameters ();
+	cloud_viewer_->setCameraPosition (0.0, 0.0, 30.0, 0.0, 1.0, 0.0, 0);
+	cloud_viewer_->setCameraClipDistances (0.0, 100.0);
+	//	cloud_viewer_->registerKeyboardCallback (&LidarProcess::keyboard_callback, *this);
+	{
+		//画车身
+		float x1 = -1 , x2 = 1 , y1 = -1 , y2 = 3, z = 0;
+		float newx1, newx2, newy1, newy2, newz;
+		coordinate_from_vehicle_to_velodyne(x1,y1,z,newx1,newy1,newz);
+		coordinate_from_vehicle_to_velodyne(x2,y2,z,newx2,newy2,newz);
+		pcl::PointXYZI pt1, pt2, pt3, pt4;
+		pt1.x = newx1 ;
+		pt1.y = newy1 ;
+		pt1.z = newz;
+		pt2.x = newx1 ;
+		pt2.y = newy2 ;
+		pt2.z = newz;
+		cloud_viewer_->addLine(pt1, pt2, "body1");
+
+		pt1.x = newx2 ;
+		pt1.y = newy2 ;
+		pt1.z = newz;
+		cloud_viewer_->addLine(pt1, pt2, "body2");
+
+		pt2.x = newx2 ;
+		pt2.y = newy1 ;
+		pt2.z = newz;
+		cloud_viewer_->addLine(pt1, pt2, "body3");
+
+		pt1.x = newx1 ;
+		pt1.y = newy1 ;
+		pt1.z = newz;
+		cloud_viewer_->addLine(pt1, pt2, "body4");
+
+
+
+		//画上范围
+		if(0)
+		{
+			float x1 = -20 , x2 = 20 , y1 = -1 , y2 = 40, z = Z_MAX;
+			float newx1, newx2, newy1, newy2, newz;
+			coordinate_from_vehicle_to_velodyne(x1,y1,z,newx1,newy1,newz);
+			coordinate_from_vehicle_to_velodyne(x2,y2,z,newx2,newy2,newz);
+			pcl::PointXYZI pt1, pt2, pt3, pt4;
+			pt1.x = newx1 ;
+			pt1.y = newy1 ;
+			pt1.z = newz;
+			pt2.x = newx1 ;
+			pt2.y = newy2 ;
+			pt2.z = newz;
+			cloud_viewer_->addLine(pt1, pt2, "upper1");
+
+			pt1.x = newx2 ;
+			pt1.y = newy2 ;
+			pt1.z = newz;
+			cloud_viewer_->addLine(pt1, pt2, "upper2");
+
+			pt2.x = newx2 ;
+			pt2.y = newy1 ;
+			pt2.z = newz;
+			cloud_viewer_->addLine(pt1, pt2, "upper3");
+
+			pt1.x = newx1 ;
+			pt1.y = newy1 ;
+			pt1.z = newz;
+			cloud_viewer_->addLine(pt1, pt2, "upper4");
+		}
+
+		//画网格线
+		char linename[20];
+		for(int i = 0 ; i < 20 ; i++)
+		{
+			x1 = -20 ;
+			x2 = 20 ;
+			y1 = (i - 2) * 5 ;
+			y2 = (i - 2) * 5;
+			z = 0;
+			coordinate_from_vehicle_to_velodyne(x1,y1,z,newx1,newy1,newz);
+			coordinate_from_vehicle_to_velodyne(x2,y2,z,newx2,newy2,newz);
+			pt1.x = std::min(newx1 , newx2) ;
+			pt1.y = std::min(newy1 , newy2) ;
+			pt1.z = newz;
+			pt2.x = std::max(newx1 , newx2) ;
+			pt2.y = std::max(newy1 , newy2) ;
+			pt2.z = newz;
+			memset(linename, 0 , 20);
+			sprintf(linename , "lat%02d" , i);
+			cloud_viewer_->addLine(pt1, pt2, linename);
+		}
+
+		for(int i = 0 ; i < 5 ; i++)
+		{
+			x1 = i * 10 - 20;
+			x2 = i * 10 - 20;
+			y1 = -20 ;
+			y2 = 70 ;
+			z = 0;
+			coordinate_from_vehicle_to_velodyne(x1,y1,z,newx1,newy1,newz);
+			coordinate_from_vehicle_to_velodyne(x2,y2,z,newx2,newy2,newz);
+			pt1.x = std::min(newx1 , newx2) ;
+			pt1.y = std::min(newy1 , newy2) ;
+			pt1.z = newz;
+			pt2.x = std::max(newx1 , newx2) ;
+			pt2.y = std::max(newy1 , newy2) ;
+			pt2.z = newz;
+			memset(linename, 0 , 20);
+			sprintf(linename , "lng%02d" , i);
+			cloud_viewer_->addLine(pt1, pt2, linename);
+		}
+	}
+#endif //VIEWER_ver
 }
