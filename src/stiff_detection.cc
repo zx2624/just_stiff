@@ -101,8 +101,10 @@ void StiffDetection::process(){
 			//将点云投影到栅格地图显示，并将有点云的栅格标记为非悬崖区域。耗时3ms左右
 			vertical_roi_cloud_->clear();
 			mtx_verwall_.lock();
+			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
+			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
 			for(auto pt : tempcloud->points){
-				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.3){
+				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.4){
 					vertical_roi_cloud_->points.push_back(pt);
 				}
 				if(pt.range < 0) continue;
@@ -162,8 +164,7 @@ void StiffDetection::process(){
 			}
 
 
-			//			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
-			//			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
+
 			//			ShowCloud(cloud_viewer_, vertical_roi_cloud_);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
@@ -955,6 +956,7 @@ void StiffDetection::verticalWallDetect(){
 	boost::shared_ptr<PCLVisualizer> cloud_viewer_ (new PCLVisualizer("stiffdetection cloud"));
 	PrepareViewer(cloud_viewer_);
 #endif //CLOUDVIEWER
+	ros::Rate r(5);
 	while(ros::ok()){
 		pcl::PCLPointCloud2::Ptr cloud_blob (new pcl::PCLPointCloud2), cloud_filtered_blob (new pcl::PCLPointCloud2);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr  cloud_in(new pcl::PointCloud<pcl::PointXYZI>)
@@ -971,7 +973,13 @@ void StiffDetection::verticalWallDetect(){
 			usleep(100000);
 			continue;
 		}
-		cloud_in = vertical_roi_cloud_;
+		double t1 = ros::Time::now().toSec();
+		//实验证明，这里加锁还是很有必要的
+		mtx_verwall_.lock();
+		pcl::copyPointCloud(*vertical_roi_cloud_, *cloud_in);
+		mtx_verwall_.unlock();
+		double t2 = ros::Time::now().toSec();
+//		cloud_in = vertical_roi_cloud_;
 //		pcl::UniformSampling<pcl::PointXYZI> filter;
 //		filter.setInputCloud(vertical_roi_cloud_);
 //		filter.setRadiusSearch(0.3f);
@@ -1016,6 +1024,7 @@ void StiffDetection::verticalWallDetect(){
 		{
 
 			inliers->indices.clear();
+
 			if(cloud_in->size() < 10) break;
 			std::chrono::steady_clock::time_point  now = std::chrono::steady_clock::now();
 			// Segment the largest planar component from the remaining cloud
@@ -1051,7 +1060,7 @@ void StiffDetection::verticalWallDetect(){
 			}else if(abs(abc.z()) > 0.9){//
 				std::cout << abc.x() << "  " << abc.y() << "  " << abc.z() << "  " <<
 				coefficients->values[3]	<< std::endl;
-				*cloud_out += *cloud_p;
+//				*cloud_out += *cloud_p;
 			}
 			i++;
 			auto t2 = std::chrono::steady_clock::now();
@@ -1062,7 +1071,7 @@ void StiffDetection::verticalWallDetect(){
 			ShowCloud(cloud_viewer_, cloud_out);
 		}
 		cloud_viewer_->spinOnce();
-
+		r.sleep();
 	}
 }
 void StiffDetection::PublishMsg(cv::Mat grid_show, cv::Mat grid_msg_show, ros::Time stamp){
