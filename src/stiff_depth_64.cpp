@@ -965,7 +965,6 @@ int main(int argc, char** argv)
 	* ::Eigen::AngleAxisd(ea0[1], ::Eigen::Vector3d::UnitY())
 	* ::Eigen::AngleAxisd(ea0[2], ::Eigen::Vector3d::UnitX());
 
-
 	T.rotate ( R );                                        // 按照rotation_vector进行旋转
 	T.pretranslate ( Eigen::Vector3d (0,1, 2.14) );
 

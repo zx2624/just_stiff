@@ -54,13 +54,15 @@ include_directories(SYSTEM  ${catkin_INCLUDE_DIRS} ${ivcommon_INCLUDE_DIRS} ${LU
  )
 
 catkin_package(
-  CATKIN_DEPENDS ${PACKAGE_DEPENDENCIES}
+  CATKIN_DEPENDS ${PACKAGE_DEPENDENCIES} dynamic_reconfigure
   DEPENDS EIGEN3 PCL OpenCV
   INCLUDE_DIRS src
 )
 
 
 add_executable(stiff_detection src/stiff_detection_main.cc src/stiff_detection.cc )#
+#add_library(stiff_detection SHARED src/stiff_detection.cc)
+add_dependencies(stiff_detection ${${PROJECT_NAME}_EXPORTED_TARGETS})
 target_link_libraries(stiff_detection PUBLIC ${catkin_LIBRARIES}  ${ivcommon_LIBRARIES}  ${PCL_LIBRARIES}  ${Boost_LIBRARIES}  ${OpenCV_LIBS} ${sensor_driver_INCLUDE_DIRS} utils ivsensor glog gflags )
 
 set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} -std=c++11")
@@ -80,5 +82,7 @@ install(
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
 )
+
+
 
 set(CUDA_USE_STATIC_CUDA_RUNTIME OFF)

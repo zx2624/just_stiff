@@ -33,8 +33,8 @@
 
 
 #define PI 3.141592653
-//#define CLOUDVIEWER //悬崖检测可视化点云可视化
-#define CLOUDVIEWER_VER
+#define CLOUDVIEWER //悬崖检测可视化点云可视化
+//#define CLOUDVIEWER_VER
 #define GRIDWH 351
 #define FAR_BOUND 45 //可用的远处点云范围
 #define NEAR_BOUND 45 //可用的近处点云范围
