@@ -418,7 +418,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						else{
 #ifdef NEW
 							high_cloud_->points.push_back(pt_high_ori);//todo:历史遗留问题
-//							std::cout << pt_high_ori.y << " ";
+							std::cout << pt_high_ori.y << " ";
 #else
 							high_cloud_->points.push_back(pt_high_ori);
 #endif //NEW
@@ -434,7 +434,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						low_cloud_->points.push_back(pt_low_ori);
 #endif //NEW
 					}
-//					std::cout <<"  ---- left" << std::endl;
+					std::cout <<"  ---- left" << std::endl;
 #endif //CLOUDVIEWER
 
 					//画线，连接两个小窗口的平均坐标作为悬崖区域，有一定的缩短
@@ -446,7 +446,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					}
 					float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
 					//如果画线太长的话按比例缩短
-					if(0){//ratio < 1
+					if(ratio < 1){
 						end_x = begin_x + ratio * (end_x - begin_x);
 						end_y = begin_y + ratio * (end_y - begin_y);
 					}
@@ -458,15 +458,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						//									<< dis_tocheck <<
 						//									" neighbor height is " << z_diff_nb << std::endl;
 						//							std::cout << "dis ratio is " << dis_ratio << std::endl;
-//						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),3);
-						auto ptr_begin = grid_show.ptr<unsigned char>(begin_y);
-						auto ptr_end = grid_show.ptr<unsigned char>(end_y);
-						ptr_begin[3*begin_x+2] = 255;
-						ptr_begin[3*begin_x] = 0;
-						ptr_begin[3*begin_x+1] = 0;
-						ptr_end[3*end_x+2] = 255;
-						ptr_end[3*end_x+0] = 0;
-						ptr_end[3*end_x+1] = 0;
+						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),3);
 					}
 				}
 				i_begin = 0;
@@ -633,7 +625,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 #ifdef NEW
 #ifdef CLOUDVIEWER
 							high_cloud_->points.push_back(pt_high);
-//							std::cout << pt_high.y << " ";
+							std::cout << pt_high.y << " ";
 #endif //CLOUDVIEWER
 #else
 							high_cloud_->points.push_back(pt_high);
@@ -652,7 +644,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						low_cloud_->points.push_back(pt_low);
 #endif//NEW
 					}
-//					std::cout << " ------- right" << std::endl;
+					std::cout << " ------- right" << std::endl;
 					//如果画线太长的话按比例缩短
 					int begin_x = (x0 + 35) / 0.2, begin_y = (y0 + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
 					int end_x = (x1 + 35) / 0.2, end_y = (y1 + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
@@ -661,7 +653,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						swap(begin_y, end_y);
 					}
 					float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
-					if(0){//ratio < 1
+					if(ratio < 1){
 						end_x = begin_x + ratio * (end_x - begin_x);
 						end_y = begin_y + ratio * (end_y - begin_y);
 					}
@@ -669,15 +661,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
 							&& begin_y >=0 && begin_y < GRIDWH
 							&& end_y >=0 && end_y < GRIDWH){
-//						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),3);
-						auto ptr_begin = grid_show.ptr<unsigned char>(begin_y);
-						auto ptr_end = grid_show.ptr<unsigned char>(end_y);
-						ptr_begin[3*begin_x+2] = 255;
-						ptr_begin[3*begin_x] = 0;
-						ptr_begin[3*begin_x+1] = 0;
-						ptr_end[3*end_x+2] = 255;
-						ptr_end[3*end_x+0] = 0;
-						ptr_end[3*end_x+1] = 0;
+						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),3);
 					}
 				}
 			}
@@ -973,22 +957,14 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					//						i_begin << std::endl;
 					//如果画线太长的话按比例缩短
 					float ratio = 10 / sqrt(pow((end_y - begin_y), 2) + pow((end_x - begin_x), 2));
-					if(0){//ratio < 1
+					if(ratio < 1){
 						end_x = begin_x + ratio * (end_x - begin_x);
 						end_y = begin_y + ratio * (end_y - begin_y);
 					}
 					if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
 							&& begin_y >=0 && begin_y < GRIDWH
 							&& end_y >=0 && end_y < GRIDWH){
-//						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),2);
-						auto ptr_begin = grid_show.ptr<unsigned char>(begin_y);
-						auto ptr_end = grid_show.ptr<unsigned char>(end_y);
-						ptr_begin[3*begin_x+2] = 255;
-						ptr_begin[3*begin_x] = 0;
-						ptr_begin[3*begin_x+1] = 0;
-						ptr_end[3*end_x+2] = 255;
-						ptr_end[3*end_x+0] = 0;
-						ptr_end[3*end_x+1] = 0;
+						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),2);
 					}
 				}
 			}
