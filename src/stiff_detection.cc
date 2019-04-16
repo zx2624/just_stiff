@@ -229,7 +229,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	float far_bound = FAR_BOUND;
 	const int layer = 16;
 	int round = min(outputclouds[1]->points.size() / layer, outputclouds[2]->points.size() / layer);
-	std::cout << "==========---==========" << std::endl;
 	for(int j = 0; j < 16; ++j){
 		for(int i = 0; i + window_big_ < round - 20; ){
 			//将垂直墙检测感兴趣区域放入vertical_roi_cloud_,后续进行检测
@@ -418,7 +417,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						else{
 #ifdef NEW
 							high_cloud_->points.push_back(pt_high_ori);//todo:历史遗留问题
-							std::cout << pt_high_ori.y << " ";
 #else
 							high_cloud_->points.push_back(pt_high_ori);
 #endif //NEW
@@ -434,7 +432,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						low_cloud_->points.push_back(pt_low_ori);
 #endif //NEW
 					}
-					std::cout <<"  ---- left" << std::endl;
 #endif //CLOUDVIEWER
 
 					//画线，连接两个小窗口的平均坐标作为悬崖区域，有一定的缩短
@@ -625,7 +622,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 #ifdef NEW
 #ifdef CLOUDVIEWER
 							high_cloud_->points.push_back(pt_high);
-							std::cout << pt_high.y << " ";
 #endif //CLOUDVIEWER
 #else
 							high_cloud_->points.push_back(pt_high);
@@ -644,7 +640,6 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						low_cloud_->points.push_back(pt_low);
 #endif//NEW
 					}
-					std::cout << " ------- right" << std::endl;
 					//如果画线太长的话按比例缩短
 					int begin_x = (x0 + 35) / 0.2, begin_y = (y0 + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
 					int end_x = (x1 + 35) / 0.2, end_y = (y1 + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
@@ -686,7 +681,6 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	const int round32 = cloud->size() / 32;
 	//设置有效点云的最远有效阈值
 	float far_bound = FAR_BOUND;
-	std::cout << "32 begins ..." << std::endl;
 	for(int j = 0; j < 25; ++j){
 		for(int i = 0; i + window_big_ < round32 - 100; i+=window_small_){
 
@@ -915,27 +909,7 @@ void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 						//						std::cout << z << std::endl;
 						low_cloud_->points.push_back(pt_low_ori);
 					}
-//					test
-					for(int k = i_begin; k <  i_begin + window_small_; ++k){
-						int index_high = k * 32 + map_j[j];
-						int index_low = (k + window_small_) * 32 + map_j[j];
-						auto pt_high = newcloud->points[index_high];
-						auto pt_low = newcloud->points[index_low];
-						auto pt_high_ori = cloud->points[index_high];
-						auto pt_low_ori = cloud->points[index_low];
-						std::cout << pt_high_ori.y << " ";
-					}
-					std::cout << "--- ";
-					for(int k = i_begin; k <  i_begin + window_small_; ++k){
-						int index_high = k * 32 + map_j[j];
-						int index_low = (k + window_small_) * 32 + map_j[j];
-						auto pt_high = newcloud->points[index_high];
-						auto pt_low = newcloud->points[index_low];
-						auto pt_high_ori = cloud->points[index_high];
-						auto pt_low_ori = cloud->points[index_low];
-						std::cout << pt_low_ori.y << " ";
-					}
-					std::cout << std::endl;
+
 #endif //CLOUDVIEWER
 
 					{//test
