@@ -36,10 +36,11 @@
 #define CLOUDVIEWER //悬崖检测可视化点云可视化
 //#define CLOUDVIEWER_VER
 #define GRIDWH 351
-#define FAR_BOUND 45 //可用的远处点云范围
+#define FAR_BOUND 85 //可用的远处点云范围
 #define NEAR_BOUND 45 //可用的近处点云范围
 //#define NEIGHBOUR
 #define NEW
+#define BIG
 
 /*!
  * 此类作用：
@@ -146,7 +147,7 @@ private:
 	cv::Mat elementero;
 	cv::Mat elementdil;
 	int window_big_ = 20;	/**< 大窗口的点云数量 */
-	int window_small_ = 5;	/**< 小窗口的点云数量 */
+	int window_small_ = 10;	/**< 小窗口的点云数量 */
 	float th_dis = 0.65;	/**< 距离突变阈值 */
 	float th_tan_16 = 0.166;	/**< 16线正切阈值 */
 	float th_tan_32 = 0.113;	/**< 32线正切阈值 */

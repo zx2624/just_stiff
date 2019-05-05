@@ -165,7 +165,7 @@ void StiffDetection::process(){
 
 
 
-			ShowCloud(cloud_viewer_, tempcloud);
+			ShowCloud(cloud_viewer_, outputclouds[1]);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
@@ -179,7 +179,7 @@ bool StiffDetection::ptUseful(pcl::PointXYZI& pt, float dis_th){
 	float  x = pt.x;
 	float  y = pt.y;
 	float dis = sqrt(x*x + y*y + z*z);
-	if(pt.range < 0 || dis > dis_th || z > 3 || z < -10 || y < 0 || x > 100)
+	if(pt.range < 0 || dis > dis_th || z > 3 || z < -30 || y < 0 || x > 100)
 		return false;
 	return true;
 }
@@ -332,7 +332,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 				//处理深不见底
 				float dis_deep = sqrt(x_high*x_high + y_high*y_high);
-				if(dis_deep < 30 && dis_deep != 0 && cnt_ill >= window_small_){
+				if(dis_deep < 20 && dis_deep != 0 && cnt_ill >= window_small_ - 1 &&
+						abs(z_high) > 0.0001 && z_high < 0.5 ){
 					i_deep = i;
 				}
 				//寻找高度差最大的两个小窗口
@@ -353,6 +354,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 			}
 			//大悬崖无返回点
+#ifdef BIG
 			if(i_deep != 0 ){//
 				float x_begin,y_begin,x_end,y_end;
 				bool begin_found = false, end_found  = false;
@@ -384,6 +386,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 
 			}
+#endif //BIG
 			//如果存在两个小窗口满足高度差要求的话
 			if(i_begin != 0){
 				float z_diff_nb = 0;
@@ -580,7 +583,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 				//处理深不见底
 				float dis_deep = sqrt(x_high*x_high + y_high*y_high);
-				if(dis_deep < 30 && dis_deep != 0 && cnt_ill >= window_small_ - 1){
+				if(dis_deep < 20 && dis_deep != 0 && cnt_ill >= window_small_ - 1 &&
+						abs(z_high) > 0.0001 && z_high < 0.5 ){
 					i_deep = i;
 				}
 				//
@@ -599,6 +603,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					i_begin = k;
 				}
 			}
+#ifdef BIG
 			//大悬崖无返回点
 			if(i_deep != 0 ){
 				float x_begin,y_begin,x_end,y_end;
@@ -631,6 +636,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				}
 
 			}
+#endif //BIG
 			if(i_begin != 0){//
 				//寻找相邻窗口点
 				bool ok = false;
