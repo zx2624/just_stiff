@@ -165,7 +165,7 @@ void StiffDetection::process(){
 
 
 
-			ShowCloud(cloud_viewer_, outputclouds[1]);
+			ShowCloud(cloud_viewer_, tempcloud);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
