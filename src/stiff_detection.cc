@@ -376,12 +376,15 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					}
 				}
 				if(begin_found && end_found){
-					int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
-					int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
-					if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
-							&& begin_y >=0 && begin_y < GRIDWH
-							&& end_y >=0 && end_y < GRIDWH){
-						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),5);
+					if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
+					else{
+						int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
+						int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
+								&& begin_y >=0 && begin_y < GRIDWH
+								&& end_y >=0 && end_y < GRIDWH){
+							cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,125,125),5);
+						}
 					}
 				}
 
@@ -626,12 +629,15 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					}
 				}
 				if(begin_found && end_found){
-					int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
-					int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
-					if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
-							&& begin_y >=0 && begin_y < GRIDWH
-							&& end_y >=0 && end_y < GRIDWH){
-						cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,0,125),5);
+					if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
+					else{
+						int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
+						int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
+								&& begin_y >=0 && begin_y < GRIDWH
+								&& end_y >=0 && end_y < GRIDWH){
+							cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(125,0,125),5);
+						}
 					}
 				}
 
