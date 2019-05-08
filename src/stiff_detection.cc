@@ -41,7 +41,7 @@ void StiffDetection::process(){
 	//cloudviewer的初始化必须和显示在同一个线程
 #ifdef CLOUDVIEWER
 	boost::shared_ptr<PCLVisualizer> cloud_viewer_ (new PCLVisualizer("stiffdetection cloud"));
-	PrepareViewer(cloud_viewer_);
+//	PrepareViewer(cloud_viewer_);
 #endif //CLOUDVIEWER
 	while(ros::ok()){
 		//		if(ros::Time::now().toSec() - last_time_gps_ > 1 && last_time_gps_ > 0){
@@ -103,9 +103,13 @@ void StiffDetection::process(){
 			mtx_verwall_.lock();
 			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
 			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
+			pcl::PointCloud<pcl::PointXYZI>::Ptr tmpcld(new pcl::PointCloud<pcl::PointXYZI>);
 			for(auto pt : tempcloud->points){
 				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.4){
 					vertical_roi_cloud_->points.push_back(pt);
+				}
+				if(pt.range < 80 && pt.range > 0){
+					tmpcld->points.push_back(pt);
 				}
 				if(pt.range < 0) continue;
 				float x = pt.x;
@@ -165,7 +169,7 @@ void StiffDetection::process(){
 
 
 
-			ShowCloud(cloud_viewer_, tempcloud);
+			ShowCloud(cloud_viewer_, tmpcld);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
