@@ -2,11 +2,8 @@
 
 StiffDetection::StiffDetection(ros::NodeHandle& nh):nh_(nh)
 ,vertical_roi_cloud_(new pcl::PointCloud<pcl::PointXYZI>)
-#ifdef CLOUDVIEWER
 ,high_cloud_ ( new pcl::PointCloud<pcl::PointXYZI>),
 low_cloud_ (new pcl::PointCloud<pcl::PointXYZI>)
-#endif //CLOUDVIEWER
-
 {
 	ros::param::get("~visulization",visual_on);
 	if(visual_on)
@@ -41,7 +38,7 @@ void StiffDetection::process(){
 	//cloudviewer的初始化必须和显示在同一个线程
 #ifdef CLOUDVIEWER
 	boost::shared_ptr<PCLVisualizer> cloud_viewer_ (new PCLVisualizer("stiffdetection cloud"));
-//	PrepareViewer(cloud_viewer_);
+	PrepareViewer(cloud_viewer_);
 #endif //CLOUDVIEWER
 	while(ros::ok()){
 		//		if(ros::Time::now().toSec() - last_time_gps_ > 1 && last_time_gps_ > 0){
@@ -51,8 +48,8 @@ void StiffDetection::process(){
 		//			pub2();
 		//		}
 		//从队列中取出消息
-		sensor_driver_msgs::GpswithHeadingConstPtr tmpmsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
-		if(tmpmsg == nullptr){
+		sensor_driver_msgs::GpswithHeadingConstPtr blocks_j_beginimsg=qgwithhmsgs_.PopWithTimeout(common::FromSeconds(0.1));
+		if(blocks_j_beginimsg == nullptr){
 			std::cout << "no gps data, continue" << std::endl;
 			continue;
 		}
@@ -65,11 +62,11 @@ void StiffDetection::process(){
 		//时间戳同步
 		double lidarstamp = lidarCloudMsgs_->header.stamp.toSec();
 		last_time_lidar_ = lidarstamp;
-		double gpsstamp = tmpmsg->gps.header.stamp.toSec();
+		double gpsstamp = blocks_j_beginimsg->gps.header.stamp.toSec();
 		last_time_gps_ = gpsstamp;
 		if(gpsstamp > lidarstamp){
 			std::cout << "wait for lidar ----" << std::endl;
-			qgwithhmsgs_.Push_Front(std::move(tmpmsg));
+			qgwithhmsgs_.Push_Front(std::move(blocks_j_beginimsg));
 			usleep(10000);
 			continue;
 		}
@@ -79,11 +76,11 @@ void StiffDetection::process(){
 				usleep(100000);
 				continue;
 			}
-			tmpmsg=qgwithhmsgs_.Pop();
-			gpsstamp=tmpmsg->gps.header.stamp.toSec();
+			blocks_j_beginimsg=qgwithhmsgs_.Pop();
+			gpsstamp=blocks_j_beginimsg->gps.header.stamp.toSec();
 		}
 		//获取姿态角，转换成四元数。
-		double yaw = tmpmsg->heading, pitch = tmpmsg->pitch, roll = tmpmsg->roll;
+		double yaw = blocks_j_beginimsg->heading, pitch = blocks_j_beginimsg->pitch, roll = blocks_j_beginimsg->roll;
 		Eigen::AngleAxisd yaw_ = Eigen::AngleAxisd(yaw * PI / 180, Eigen::Vector3d::UnitZ());
 		Eigen::AngleAxisd pitch_ = Eigen::AngleAxisd(pitch * PI / 180, Eigen::Vector3d::UnitX());
 		Eigen::AngleAxisd roll_ = Eigen::AngleAxisd(roll * PI / 180, Eigen::Vector3d::UnitY());
@@ -103,13 +100,13 @@ void StiffDetection::process(){
 			mtx_verwall_.lock();
 			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
 			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
-			pcl::PointCloud<pcl::PointXYZI>::Ptr tmpcld(new pcl::PointCloud<pcl::PointXYZI>);
+			pcl::PointCloud<pcl::PointXYZI>::Ptr blocks_j_beginicld(new pcl::PointCloud<pcl::PointXYZI>);
 			for(auto pt : tempcloud->points){
 				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.4){
 					vertical_roi_cloud_->points.push_back(pt);
 				}
 				if(pt.range < 80 && pt.range > 0){
-					tmpcld->points.push_back(pt);
+					blocks_j_beginicld->points.push_back(pt);
 				}
 				if(pt.range < 0) continue;
 				float x = pt.x;
@@ -169,7 +166,7 @@ void StiffDetection::process(){
 
 
 
-			ShowCloud(cloud_viewer_, tmpcld);
+			ShowCloud(cloud_viewer_, tempcloud);
 			cloud_viewer_->spinOnce();
 #endif //CLOUDVIEWER
 
@@ -233,6 +230,9 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 	float far_bound = FAR_BOUND;
 	const int layer = 16;
 	int round = min(outputclouds[1]->points.size() / layer, outputclouds[2]->points.size() / layer);
+	//记录连续丢失点的j和窗口起始i
+	std::map<int, int> j_begini_1;
+	std::map<int ,int> j_begini_2;
 	for(int j = 0; j < 16; ++j){
 		for(int i = 0; i + window_big_ < round - 20; ){
 
@@ -255,6 +255,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 			int i_begin = 0;
 			//大悬崖无返回点
 			int i_deep = 0;
+			bool stop = false;
 			//dis_ratio 小窗口间的距离比例
 			//tangent 小窗口间的正切值
 			float dis_ratio = 0, dis_tocheck = 0, tangent = 0;
@@ -276,7 +277,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float  x = outputclouds[1]->points[index].x;
 					float  y = outputclouds[1]->points[index].y;
 					float dis = sqrt(x*x + y*y + z*z);
-					if(ptUseful(outputclouds[1]->points[index], 60)) cnt++;
+					if(ptUseful(outputclouds[1]->points[index], NEAR_BOUND)) cnt++;
 					if(!ptUseful(outputclouds[1]->points[index], NEAR_BOUND)) continue;
 					//利用姿态角矫正
 					Eigen::Vector3d pt(x, y, z);
@@ -337,8 +338,10 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				//处理深不见底
 				float dis_deep = sqrt(x_high*x_high + y_high*y_high);
 				if(dis_deep < 20 && dis_deep != 0 && cnt_ill >= window_small_ - 1 &&
-						abs(z_high) > 0.0001 && z_high < 0.5 ){
-					i_deep = i;
+						abs(z_high) > 0.0001 && z_high < 0.5 && !stop){
+					i_deep = k;
+
+					stop = true;
 				}
 				//寻找高度差最大的两个小窗口
 				if(height_diff < th_height && height_diff < height_diff_most && count > 0){
@@ -360,38 +363,7 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 			//大悬崖无返回点
 #ifdef BIG
 			if(i_deep != 0 ){//
-				float x_begin,y_begin,x_end,y_end;
-				bool begin_found = false, end_found  = false;
-				for(int k = i_deep; k <  i_deep + window_small_; ++k){
-					int index_high = k * layer + j;
-					auto pt_high = new16_left->points[index_high];
-					high_cloud_->points.push_back(pt_high);
-					if(pt_high.range > 0){
-						if(!begin_found){
-							x_begin = pt_high.x;
-							y_begin = pt_high.y;
-							begin_found = true;
-						}
-						if(begin_found && !end_found){
-							x_end = pt_high.x;
-							y_end = pt_high.y;
-							end_found = true;
-						}
-					}
-				}
-				if(begin_found && end_found){
-					if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
-					else{
-						int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
-						int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
-						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
-								&& begin_y >=0 && begin_y < GRIDWH
-								&& end_y >=0 && end_y < GRIDWH){
-							cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,125,125),5);
-						}
-					}
-				}
-
+				j_begini_1[j] = i_deep;
 			}
 #endif //BIG
 			//如果存在两个小窗口满足高度差要求的话
@@ -592,7 +564,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 				float dis_deep = sqrt(x_high*x_high + y_high*y_high);
 				if(dis_deep < 20 && dis_deep != 0 && cnt_ill >= window_small_ - 1 &&
 						abs(z_high) > 0.0001 && z_high < 0.5 ){
-					i_deep = i;
+					i_deep = k;
+					stop = true;
 				}
 				//
 				float height_diff = 0;
@@ -612,39 +585,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 			}
 #ifdef BIG
 			//大悬崖无返回点
-			if(i_deep != 0 ){
-				float x_begin,y_begin,x_end,y_end;
-				bool begin_found = false, end_found  = false;
-				for(int k = i_deep; k <  i_deep + window_small_; ++k){
-					int index_high = (k + window_small_) * layer + j;
-					auto pt_high = new16_right->points[index_high];
-					high_cloud_->points.push_back(pt_high);
-					if(pt_high.range > 0){
-						if(!begin_found){
-							x_begin = pt_high.x;
-							y_begin = pt_high.y;
-							begin_found = true;
-						}
-						if(begin_found && !end_found){
-							x_end = pt_high.x;
-							y_end = pt_high.y;
-							end_found = true;
-						}
-					}
-				}
-				if(begin_found && end_found){
-					if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
-					else{
-						int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
-						int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
-						if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
-								&& begin_y >=0 && begin_y < GRIDWH
-								&& end_y >=0 && end_y < GRIDWH){
-							cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(125,0,125),5);
-						}
-					}
-				}
-
+			if(i_deep != 0 ){//
+				j_begini_2[j] = i_deep;
 			}
 #endif //BIG
 			if(i_begin != 0){//
@@ -763,6 +705,125 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 			i += window_big_ / 2;
 		}
 	}
+#ifdef BIG
+	//将j_begini进行分组，间隔近的分为一组，每组的线束足够多才认为可能是悬崖
+	//-----左侧雷达
+	{
+		vector<vector<pair<int,int> > > blocks_j_begini;
+		if(j_begini_1.size() > 0){
+			auto it = j_begini_1.begin(),it_next = std::next(it);
+			blocks_j_begini.push_back({std::make_pair(it->first, it->second)});
+			for(;it_next != j_begini_1.end();it++,it_next++){
+				vector<pair<int,int> >& vec_now = *(std::prev(blocks_j_begini.end()));
+				int i1 = it_next->first, i0 = it->first;
+				if(i1 - i0 < 2){
+					vec_now.push_back(std::make_pair(i1, j_begini_1[i1]));
+				}else{
+					blocks_j_begini.push_back({std::make_pair(i1, j_begini_1[i1])});
+				}
+			}
+		}
+		for(auto out : blocks_j_begini){//out --- vector<pair<int,int> >
+			if(out.size() > 5){//每组有超过5条线束
+				for(auto in : out){//in --- <pair<int,int>
+					int j = in.first, i_deep = in.second;
+					float x_begin,y_begin,x_end,y_end;
+					bool begin_found = false, end_found  = false;
+					for(int k = i_deep; k <  i_deep + window_small_; ++k){
+						int index_high = k * layer + j;
+						int index_ = (k + window_small_) * layer + j;
+						auto pt_high = new16_left->points[index_high];
+						auto pt_ = new16_left->points[index_];
+						high_cloud_->points.push_back(pt_high);
+						//					std::cout << pt_high.x << " " << pt_high.y <<  " "
+						//							 << pt_high.z << " " << pt_high.range << std::endl;
+						if(pt_high.range > 0){
+							if(!begin_found){
+								x_begin = pt_high.x;
+								y_begin = pt_high.y;
+								begin_found = true;
+							}
+							if(begin_found && !end_found){
+								x_end = pt_high.x;
+								y_end = pt_high.y;
+								end_found = true;
+							}
+						}
+					}
+					if(begin_found && end_found){
+						if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
+						else{
+							int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
+							int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+							if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
+									&& begin_y >=0 && begin_y < GRIDWH
+									&& end_y >=0 && end_y < GRIDWH){
+								cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(0,125,125),5);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	//------右侧雷达
+	{
+		vector<vector<pair<int,int> > > blocks_j_begini;
+		if(j_begini_2.size() > 0){
+			auto it = j_begini_2.begin(),it_next = std::next(it);
+			blocks_j_begini.push_back({std::make_pair(it->first, it->second)});
+			for(;it_next != j_begini_2.end();it++,it_next++){
+				vector<pair<int,int> >& vec_now = *(std::prev(blocks_j_begini.end()));
+				int i1 = it_next->first, i0 = it->first;
+				if(i1 - i0 < 2){
+					vec_now.push_back(std::make_pair(i1, j_begini_2[i1]));
+				}else{
+					blocks_j_begini.push_back({std::make_pair(i1, j_begini_2[i1])});
+				}
+			}
+		}
+		for(auto out : blocks_j_begini){//out --- vector<pair<int,int> >
+			if(out.size() > 5){//每组有超过5条线束
+				for(auto in : out){//in --- <pair<int,int>
+					int j = in.first, i_deep = in.second;
+					float x_begin,y_begin,x_end,y_end;
+					bool begin_found = false, end_found  = false;
+					for(int k = i_deep + window_small_; k <  i_deep + 2 * window_small_; ++k){
+						int index_high = k * layer + j;
+						int index_ = (k + window_small_) * layer + j;
+						auto pt_high = new16_right->points[index_high];
+						auto pt_ = new16_right->points[index_];
+						high_cloud_->points.push_back(pt_high);
+						if(pt_high.range > 0){
+							if(!begin_found){
+								x_begin = pt_high.x;
+								y_begin = pt_high.y;
+								begin_found = true;
+							}
+							if(begin_found && !end_found){
+								x_end = pt_high.x;
+								y_end = pt_high.y;
+								end_found = true;
+							}
+						}
+					}
+					if(begin_found && end_found){
+						if(x_begin > -2 && x_begin < 2 && y_begin < 4){}
+						else{
+							int begin_x = (x_begin + 35) / 0.2, begin_y = (y_begin + 20) / 0.2; begin_y = GRIDWH - 1 - begin_y;
+							int end_x = (x_end + 35) / 0.2, end_y = (y_end + 20) / 0.2; end_y = GRIDWH - 1 - end_y;
+							if(begin_x >= 0 && begin_x < GRIDWH && end_x >= 0 && end_x < GRIDWH
+									&& begin_y >=0 && begin_y < GRIDWH
+									&& end_y >=0 && end_y < GRIDWH){
+								cv::line(grid_show, cvPoint(begin_x, begin_y), cvPoint(end_x, end_y), cvScalar(125,0,125),5);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+#endif //BIG
 }
 //32线检测的总体思路和16线类似
 void StiffDetection::Detection32(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> outputclouds,

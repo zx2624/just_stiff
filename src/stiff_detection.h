@@ -33,7 +33,7 @@
 
 
 #define PI 3.141592653
-#define CLOUDVIEWER //悬崖检测可视化点云可视化
+//#define CLOUDVIEWER //悬崖检测可视化点云可视化
 //#define CLOUDVIEWER_VER
 #define GRIDWH 351
 #define FAR_BOUND 85 //可用的远处点云范围
@@ -159,10 +159,8 @@ private:
 	bool visual_on = true;	/**< 是否开启可视化 */
 	double last_time_gps_ = -1;	/**< 记录上次gps时间戳 */
 	double last_time_lidar_ = -1;	/**< 记录上次雷达点云时间戳 */
-#ifdef CLOUDVIEWER
 	pcl::PointCloud<pcl::PointXYZI>::Ptr high_cloud_;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr low_cloud_;
-#endif //CLOUDVIEWER
 	pcl::PointCloud<pcl::PointXYZI>::Ptr vertical_roi_cloud_;	/**< 用于垂直墙检测的点云 */
 
 
