@@ -310,7 +310,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float  x = outputclouds[1]->points[index].x;
 					float  y = outputclouds[1]->points[index].y;
 					float dis = sqrt(x*x + y*y + z*z);
-					if(outputclouds[1]->points[index].range < 0) cnt_ill++;
+					if(outputclouds[1]->points[index].range < 0
+							&& dis > 80) cnt_ill++;//距离特别近也会造成无效点
 					if(!ptUseful(outputclouds[1]->points[index], far_bound)) continue;
 					ys_in_window.push_back(y);
 					Eigen::Vector3d pt(x, y, z);
@@ -540,7 +541,8 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					float  x = outputclouds[2]->points[index].x;
 					float  y = outputclouds[2]->points[index].y;
 					float dis = sqrt(x*x + y*y + z*z);
-					if(outputclouds[2]->points[index].range < 0) cnt_ill++;
+					if(outputclouds[2]->points[index].range < 0
+							&& dis > 80) cnt_ill++;//距离特别近也会是无效点
 					if(!ptUseful(outputclouds[2]->points[index], far_bound)) continue;
 					Eigen::Vector3d pt(x, y, z);
 					pt = q * pt;
@@ -790,9 +792,10 @@ void StiffDetection::Detection16(vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> ou
 					bool begin_found = false, end_found  = false;
 					for(int k = i_deep + window_small_; k <  i_deep + 2 * window_small_; ++k){
 						int index_high = k * layer + j;
-						int index_ = (k + window_small_) * layer + j;
+						int index_ = (k - window_small_) * layer + j;
 						auto pt_high = new16_right->points[index_high];
 						auto pt_ = new16_right->points[index_];
+//						std::cout << pt_.x << " " << pt_.y << " " << pt_.z << " " << pt_.range << std::endl;
 						high_cloud_->points.push_back(pt_high);
 						if(pt_high.range > 0){
 							if(!begin_found){
