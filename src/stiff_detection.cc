@@ -1,4 +1,5 @@
 #include "stiff_detection.h"
+// #include <ss
 
 StiffDetection::StiffDetection(ros::NodeHandle& nh):nh_(nh)
 ,vertical_roi_cloud_(new pcl::PointCloud<pcl::PointXYZI>)
@@ -101,6 +102,10 @@ void StiffDetection::process(){
 			Eigen::Quaterniond q_noyaw(R*(yaw_.matrix().inverse()));
 			pcl::transformPointCloud(*tempcloud, *tempcloud, Eigen::Vector3d(0,0,0), q_noyaw);
 			pcl::PointCloud<pcl::PointXYZI>::Ptr blocks_j_beginicld(new pcl::PointCloud<pcl::PointXYZI>);
+#ifdef CLOUDVIEWER
+			high_cloud_->clear();
+			low_cloud_->clear();
+#endif //CLOUDVIEWER
 			for(auto pt : tempcloud->points){
 				if(ptUseful(pt, 30) && pt.azimuth > 45 && pt.azimuth < 135 && pt.z > 0.4){
 					vertical_roi_cloud_->points.push_back(pt);
@@ -108,7 +113,10 @@ void StiffDetection::process(){
 				if(pt.range < 80 && pt.range > 0){
 					blocks_j_beginicld->points.push_back(pt);
 				}
-				if(pt.range < 0) continue;
+				if(pt.range < 0) {
+					high_cloud_->points.push_back(pt);
+					continue;
+				}
 				float x = pt.x;
 				float y = pt.y;
 				float z = pt.z;
@@ -125,14 +133,11 @@ void StiffDetection::process(){
 				}
 			}
 			mtx_verwall_.unlock();
-#ifdef CLOUDVIEWER
-			high_cloud_->clear();
-			low_cloud_->clear();
-#endif //CLOUDVIEWER
+
 			//利用16线进行检测
-			Detection16(outputclouds, grid_show, q_noyaw);
+//			Detection16(outputclouds, grid_show, q_noyaw);
 			//利用32线进行检测
-			Detection32(outputclouds, grid_show, q_noyaw);
+//			Detection32(outputclouds, grid_show, q_noyaw);
 			double t_end = ros::Time::now().toSec();
 			//			std::cout << "@stiff_detection: time cost --- " << (t_end - t_begin) * 1000 << "ms" << std::endl;
 
@@ -1411,6 +1416,8 @@ void StiffDetection::PrepareViewer(boost::shared_ptr<PCLVisualizer>& cloud_viewe
 	cloud_viewer_->initCameraParameters ();
 	cloud_viewer_->setCameraPosition (0.0, 0.0, 30.0, 0.0, 1.0, 0.0, 0);
 	cloud_viewer_->setCameraClipDistances (0.0, 100.0);
+	cloud_viewer_->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE,10,"sources_cloud_v1");
+
 	//	cloud_viewer_->registerKeyboardCallback (&LidarProcess::keyboard_callback, *this);
 	{
 		//画车身
